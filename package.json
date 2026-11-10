@@ -1,0 +1,22 @@
+{
+  "name": "skeleton",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Turn a web page into an anonymized, responsive layout skeleton.",
+  "bin": {
+    "skeleton": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "npm run build && node dist/cli.js",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "playwright": "1.49.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}

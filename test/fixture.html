@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Northwind Coffee - Fixture</title>
+<style>
+  :root {
+    --brand: #c2410c;
+    --brand-dark: #7c2d12;
+    --ink: #1c1917;
+    --muted: #78716c;
+    --paper: #fffbf5;
+    --line: #e7e5e4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Georgia, "Times New Roman", serif;
+    color: var(--ink);
+    background: var(--paper);
+  }
+  .site-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 32px;
+    padding: 20px 48px;
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    background: var(--paper);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: Helvetica, Arial, sans-serif;
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: -0.02em;
+  }
+  .brand-mark {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--brand);
+  }
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 15px;
+  }
+  .nav a { color: var(--muted); text-decoration: none; }
+  .nav a.active { color: var(--brand); font-weight: 700; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 22px;
+    border-radius: 999px;
+    background: var(--brand);
+    color: #fff;
+    font-family: Helvetica, Arial, sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    text-decoration: none;
+    border: 0;
+  }
+  .btn.ghost {
+    background: transparent;
+    color: var(--brand-dark);
+    border: 1px solid var(--brand);
+  }
+  .hero {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 64px;
+    align-items: center;
+    padding: 80px 48px;
+  }
+  .hero .eyebrow {
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--brand);
+    margin: 0 0 16px;
+  }
+  .hero h1 {
+    font-size: 56px;
+    line-height: 1.05;
+    margin: 0 0 24px;
+    letter-spacing: -0.03em;
+  }
+  .hero p {
+    font-size: 19px;
+    line-height: 1.6;
+    color: var(--muted);
+    margin: 0 0 32px;
+    max-width: 46ch;
+  }
+  .actions { display: flex; gap: 14px; }
+  .hero-art {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: 28px;
+    background: linear-gradient(135deg, #fed7aa, #c2410c);
+  }
+  .section { padding: 72px 48px; }
+  .section-head {
+    max-width: 640px;
+    margin: 0 auto 44px;
+    text-align: center;
+  }
+  .section-head h2 {
+    font-size: 38px;
+    line-height: 1.1;
+    margin: 0 0 14px;
+    letter-spacing: -0.02em;
+  }
+  .section-head p {
+    font-size: 17px;
+    line-height: 1.6;
+    color: var(--muted);
+    margin: 0;
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 28px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    padding: 30px;
+    box-shadow: 0 10px 30px rgba(28, 25, 23, 0.05);
+  }
+  .card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: #ffedd5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+  }
+  .card h3 { font-size: 21px; margin: 0 0 10px; }
+  .card p {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--muted);
+    margin: 0;
+  }
+  .footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 32px 48px;
+    border-top: 1px solid var(--line);
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .footer-links { display: flex; gap: 20px; }
+  .footer a { color: inherit; }
+</style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      Northwind Coffee
+    </div>
+    <nav class="nav">
+      <a href="#" class="active">Shop</a>
+      <a href="#">Our story</a>
+      <a href="#">Brew guides</a>
+      <a href="#">Journal</a>
+    </nav>
+    <a href="#" class="btn">Order now</a>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Roasted in small batches</p>
+        <h1>Coffee that tastes like somewhere.</h1>
+        <p>We source single-origin beans from farmers we know by name, roast them the week you order, and ship them straight to your door.</p>
+        <div class="actions">
+          <a href="#" class="btn">Start a subscription</a>
+          <a href="#" class="btn ghost">Browse the shop</a>
+        </div>
+      </div>
+      <div class="hero-art"></div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Why Northwind</h2>
+        <p>Three things we refuse to compromise on.</p>
+      </div>
+      <div class="cards">
+        <article class="card">
+          <div class="card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2"><path d="M4 20h16M6 20V9l6-5 6 5v11"/></svg>
+          </div>
+          <h3>Direct trade</h3>
+          <p>Every bag is traceable to a single farm, with prices agreed before harvest.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
+          </div>
+          <h3>Roasted to order</h3>
+          <p>We roast on Mondays and ship on Tuesdays. Nothing sits on a shelf.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2"><path d="M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/></svg>
+          </div>
+          <h3>Brew support</h3>
+          <p>Stuck on a recipe? Our team answers every message within a day.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div>&copy; 2026 Northwind Coffee Roasters</div>
+    <div class="footer-links">
+      <a href="#">Shipping</a>
+      <a href="#">Returns</a>
+      <a href="#">Contact</a>
+    </div>
+  </footer>
+</body>
+</html>
