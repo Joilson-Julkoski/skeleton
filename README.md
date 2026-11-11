@@ -1,13 +1,16 @@
 # skeleton
 
-Turn a web page into an **anonymized, responsive layout skeleton**.
+Copy a web page's rendered layout and replace its content.
 
-The tool renders a page in headless Chromium, reads the computed layout, throws
-away every piece of content and branding, and emits a single self-contained HTML
-file: semantic tags, generated class names, lorem text, neutral media blocks, and
-flow-based CSS that still reflows.
+The tool loads a page in headless Chromium, keeps the **live rendered DOM** and
+the page's **own stylesheets**, and writes a single HTML file in which every text
+node is lorem and every image URL points at a `placehold.co` placeholder sized to
+the original box and tinted with that image's dominant colour. Layout,
+typography, color and spacing survive exactly as the browser rendered them; the
+imagery is deliberately neutral.
 
-No original text, images, fonts, scripts, links, or class names survive.
+It is a **layout copy, not an anonymizer**: original class names, ids and CSS
+survive. See [Fidelity vs. anonymization](#fidelity-vs-anonymization).
 
 ## Quick start (Docker)
 
@@ -20,10 +23,11 @@ docker run --rm --ipc=host \
   skeleton https://example.com -o /out/page.html
 ```
 
-Open `out/page.html` in a browser.
+Open `out/page.html` in a browser. Images load from `placehold.co` and webfonts
+still load from the original site, so the file needs network access to look
+right.
 
-No network is needed at runtime except to reach the target URL. For a local
-file, mount it and pass a `file://` URL:
+For a local file, mount it and pass a `file://` URL:
 
 ```bash
 docker run --rm --ipc=host \
@@ -41,61 +45,115 @@ skeleton <url> [options]
   -o, --out <file>        Output HTML file (default: out.html)
       --viewport <WxH>    Capture viewport (default: 1440x900)
       --seed <number>     Lorem seed (default: 42)
-      --title <text>      Output page title (default: "Anonymized layout")
+      --title <text>      Output page title (default: "Placeholder clone")
   -h, --help              Show help
 ```
 
 Reruns with the same seed produce identical lorem, which makes diffs useful.
 
+### Image placeholders
+
+Every image is replaced by a solid [placehold.co](https://placehold.co/) block
+whose background is the **dominant colour of the original image**. Placeholders
+have no label; they are just coloured boxes.
+
+Colour sampling covers `<img>` (including `srcset`), posters, inline styles and
+stylesheet image `url()`s. Very large or unreachable images fall back to
+`d8d8d8`.
+
+CSS image placeholders use each URL's sampled colour with a nominal `1200x800`
+size, then are stretched by the page's own `background-size`.
+
 ## How it works
 
 ```
-capture  ->  extract  ->  emit
+load  ->  settle  ->  inline  ->  sample  ->  clone  ->  emit
 ```
 
-1. **capture** — loads the page, waits for fonts, scrolls to trigger lazy
-   content, then walks the rendered DOM inside the browser. For each visible
-   element it records geometry plus a curated subset of computed styles.
-2. **extract** — classifies every node (`container`, `text`, `media`, `control`,
-   `decoration`), generates deterministic lorem sized to the original word
-   count, and drops empty decoration.
-3. **emit** — writes semantic HTML and flow CSS. Flex/grid containers keep their
-   layout; resolved pixel widths become percentages or `max-width`; tables keep
-   their measured proportion; fixed heights are dropped (except for small icon
-   boxes and media aspect ratios). A conservative `max-width: 900px` fallback
-   stacks columns and wraps flex rows so the result stays usable on phones.
+1. **load** — opens the URL in Chromium at the requested viewport with a normal
+   Chrome user agent, waiting for `domcontentloaded` so a stalled request cannot
+   block the capture.
+2. **settle** — waits for fonts, scrolls through the page to trigger lazy
+   content, waits for `networkidle`, then waits until `document.styleSheets`
+   stops growing. Many CMSs inject `<link>` tags after `load`; snapshotting CSS
+   too early silently loses base styles.
+3. **inline** — reads every stylesheet the page actually applied. Cross-origin
+   sheets are fetched through the browser context so cookies and referrers
+   match. `@import` and `@charset` are stripped, webfont URLs become absolute,
+   and image `url()` references become `placehold.co` placeholders.
+4. **sample** — fetches every unique image the page references, downsizes it in
+   a canvas, and picks its most frequent colour bucket. That colour becomes the
+   placeholder background.
+5. **clone** — deep-clones `<body>`, replaces text with lorem of the same word
+   count, strips content attributes, points every image at a same-size
+   `placehold.co` placeholder, and swaps video/iframe/canvas/svg elements for
+   placeholder images of the same rendered size.
+6. **emit** — writes one self-contained HTML file: inlined CSS, the cloned body,
+   and the original `<html>`/`<body>` classes and inline styles so the page's own
+   selectors still match.
 
-## What is removed
+## What is replaced
 
-- text (replaced with lorem)
-- the original page title (replaced with a generic one)
-- images, videos, canvases, iframes, inline SVG, `url()` backgrounds
-- webfonts (font family names are kept, files are never fetched)
-- scripts, stylesheets, meta tags, favicons, tracking pixels
-- links (`href`), form values, `alt`, `title`, `aria-*`
-- original class names and IDs (regenerated as `n-<id>`)
+- every text node (lorem, sized to the original word count)
+- links (`href="#"`), `alt`, `title`, `value`, `placeholder`, `content`
+- every `src`, `srcset`, `poster` and image `url()` (backgrounds, masks,
+  borders, data URIs), replaced by `https://placehold.co/<width>x<height>` or
+  `https://placehold.co/1200x800` for CSS
+- `aria-*`, `data-*` and event handlers (attributes referenced by CSS
+  selectors are kept so scoped styles still match)
+- scripts, `meta`, `link`, `base`, `noscript`, `template`
 
-Brand colors, typography metrics, spacing, borders, radii, shadows, and
-gradients are kept.
+## What is kept
 
-## Known limitations (v1)
+- DOM structure, class names, ids
+- the page's own CSS, inlined (this is most of the output size)
+- `<html>` and `<body>` classes and inline styles
+- webfonts, still pointing at their original URLs
+- gradients, colors, spacing, borders, radii, shadows, animations
 
-- Single viewport; the flow output reflows and has a generic mobile fallback,
-  but real structural breakpoints are not inferred yet.
-- Complex, JS-hydrated sites (heavy flex/grid nesting, mega-menus, hero
-  illustrations) reconstruct roughly. Classic/server-rendered layouts do best.
-- Positioned/sticky/fixed layouts are flattened to flow.
-- Text reflow changes heights, so the result is a wireframe, not a pixel match.
-- Cookie banners and other fixed overlays are captured as part of the page.
-- Grid columns are approximated as equal `fr` tracks.
+## Known limitations
 
-See `TODO.md` for the roadmap.
+- **Not anonymized.** Class names, ids and the full original stylesheet are in
+  the output; anything brand-specific that lives in CSS or markup survives.
+- **Needs network** for `placehold.co` and webfonts.
+- **Media is generic.** CSS image placeholders use each URL's sampled colour with
+  a nominal 1200×800 size and are stretched by the page's `background-size`;
+  `<video>`, `<iframe>`, canvas and inline SVG elements become plain placeholder
+  images. Image-led layouts keep their boxes but lose their imagery by design.
+- **Colour sampling is best effort.** Images that cannot be fetched, decoded or
+  exceed the sampling budget keep `d8d8d8`. Only the first 1000 unique image URLs
+  are sampled.
+- **Size.** The whole stylesheet is inlined: 34 KB for Hacker News, 576 KB for
+  Wikipedia, 3.9 MB for GitHub.
+- **Frozen in time.** JS-driven content is captured once. Carousels and rotating
+  heroes make reruns differ, and forms/counters stop working.
+- **Shadow DOM is not cloned**; custom elements keep only their light DOM.
+- **Single viewport.** The copy keeps the page's own media queries, so it still
+  reflows, but it was only captured at one size.
+
+## Fidelity vs. anonymization
+
+This project previously measured each element's geometry and rebuilt a flow
+layout from scratch, leaving no original markup behind. That pipeline is in the
+first commit (`47ac300`) if you need it back.
+
+The trade is:
+
+| approach | fidelity | size | anonymized |
+|---|---|---|---|
+| measured flow rebuild (old) | 50–80% | 25–150 KB | yes |
+| copy DOM + CSS + placehold.co (current) | structure exact, media replaced | 34 KB–3.9 MB | no |
+
+If anonymization is the requirement, the middle ground is to emit *computed*
+styles per element instead of the original stylesheet — same fidelity, no
+borrowed CSS. See `TODO.md`.
 
 ## Test suite
 
-`test/suite.mjs` captures a matrix of representative pages (classic documents,
-modern CSS, component-heavy), emits skeletons, and writes a side-by-side
-comparison page.
+`test/suite.mjs` captures a matrix of representative pages, emits placeholder
+clones, and writes a side-by-side screenshot comparison. It reports size, element
+count and capture time; media pixels are placeholders by design, so it no longer
+scores fidelity against the original.
 
 ```bash
 docker run --rm --ipc=host \
@@ -105,9 +163,11 @@ docker run --rm --ipc=host \
   --entrypoint node skeleton /app/test/suite.mjs
 ```
 
-Then serve `out/` and open `/suite/`:
+Then serve `out/` and open `/sites/`:
 
 ```bash
 python3 -m http.server 8000 --directory out
 ```
 
+`test/clone-poc.mjs` is the exploratory script that led to clone mode; it
+generates the three-way comparison in `/poc/`. Superseded by `src/clone.ts`.

@@ -1,109 +1,101 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
-import { capture } from '../dist/capture.js';
-import { emitHtml } from '../dist/emit.js';
-import { buildLayout } from '../dist/extract.js';
-import { makeRng } from '../dist/lorem.js';
+import { clonePage } from '../dist/clone.js';
 
 const OUT = '/out/sites';
 const VIEWPORT = { width: 1440, height: 900 };
 const SEED = 42;
 
 const PAGES = [
-  { slug: 'wikipedia', name: 'Wikipedia — Web browser', tier: 1, url: 'https://en.wikipedia.org/wiki/Web_browser', verdict: 'Partial', vClass: 'v-warn' },
-  { slug: 'hackernews', name: 'Hacker News', tier: 1, url: 'https://news.ycombinator.com', verdict: 'Close', vClass: 'v-good' },
-  { slug: 'bbc', name: 'BBC News', tier: 2, url: 'https://www.bbc.com/news', verdict: 'Poor', vClass: 'v-bad' },
-  { slug: 'github', name: 'GitHub — VS Code repo', tier: 3, url: 'https://github.com/microsoft/vscode', verdict: 'Decent', vClass: 'v-warn' },
-  { slug: 'apple', name: 'Apple', tier: 3, url: 'https://www.apple.com/', verdict: 'Poor', vClass: 'v-bad' },
+  { slug: 'wikipedia', name: 'Wikipedia — Web browser', tier: 1, url: 'https://en.wikipedia.org/wiki/Web_browser' },
+  { slug: 'hackernews', name: 'Hacker News', tier: 1, url: 'https://news.ycombinator.com' },
+  { slug: 'bbc', name: 'BBC News', tier: 2, url: 'https://www.bbc.com/news' },
+  { slug: 'github', name: 'GitHub — VS Code repo', tier: 3, url: 'https://github.com/microsoft/vscode' },
+  { slug: 'apple', name: 'Apple', tier: 3, url: 'https://www.apple.com/' },
 ];
-
-function countNodes(node) {
-  let total = 1;
-  for (const child of node.children) total += countNodes(child);
-  return total;
-}
-
-async function screenshot(browser, url, path, fullPage) {
-  const page = await browser.newPage({ viewport: VIEWPORT });
-  try {
-    await page.goto(url, { waitUntil: 'load', timeout: 90_000 });
-    await page.waitForTimeout(1500);
-    await page.screenshot({ path, fullPage });
-  } finally {
-    await page.close();
-  }
-}
 
 async function main() {
   await mkdir(OUT, { recursive: true });
   const browser = await chromium.launch({
-    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+    headless: true,
+    args: ['--no-sandbox', '--disable-dev-shm-usage', '--force-device-scale-factor=1'],
   });
 
   const results = [];
 
-  for (const entry of PAGES) {
-    const started = Date.now();
-    const result = {
-      ...entry,
-      ok: false,
-      ms: 0,
-      bytes: 0,
-      nodes: 0,
-      error: '',
-    };
+  try {
+    for (const entry of PAGES) {
+      const started = Date.now();
+      const result = {
+        ...entry,
+        ok: false,
+        ms: 0,
+        bytes: 0,
+        elements: 0,
+        error: '',
+      };
 
-    try {
-      process.stdout.write(`[${entry.slug}] capturing ${entry.url}\n`);
-      const raw = await capture({
-        url: entry.url,
-        viewport: VIEWPORT,
-        timeoutMs: 90_000,
-      });
+      try {
+        process.stdout.write(`[${entry.slug}] capturing ${entry.url}\n`);
+        const clone = await clonePage({
+          url: entry.url,
+          viewport: VIEWPORT,
+          seed: SEED,
+          title: 'Placeholder clone',
+          screenshot: true,
+          timeoutMs: 90_000,
+        });
 
-      const layout = buildLayout(raw.root, makeRng(SEED));
-      const html = emitHtml(layout, {
-        title: 'Anonymized layout',
-        background: raw.pageBackground,
-      });
+        await writeFile(`${OUT}/${entry.slug}.html`, clone.html, 'utf8');
+        await writeFile(`${OUT}/${entry.slug}-original-top.png`, clone.originalScreenshot);
 
-      await writeFile(`${OUT}/${entry.slug}.html`, html, 'utf8');
-      result.bytes = Buffer.byteLength(html);
-      result.nodes = countNodes(layout);
+        const output = `${OUT}/${entry.slug}-output-top.png`;
+        await screenshot(browser, pathToFileURL(`${OUT}/${entry.slug}.html`).href, output, false);
+        await screenshot(
+          browser,
+          pathToFileURL(`${OUT}/${entry.slug}.html`).href,
+          `${OUT}/${entry.slug}-output-full.png`,
+          true,
+        );
 
-      process.stdout.write(`[${entry.slug}] screenshots\n`);
-      await screenshot(browser, entry.url, `${OUT}/${entry.slug}-original-top.png`, false);
-      await screenshot(
-        browser,
-        pathToFileURL(`${OUT}/${entry.slug}.html`).href,
-        `${OUT}/${entry.slug}-output-top.png`,
-        false,
-      );
-      await screenshot(
-        browser,
-        pathToFileURL(`${OUT}/${entry.slug}.html`).href,
-        `${OUT}/${entry.slug}-output-full.png`,
-        true,
-      );
+        result.bytes = Buffer.byteLength(clone.html);
+        result.elements = clone.elementCount;
+        result.ok = true;
 
-      result.ok = true;
-      process.stdout.write(
-        `[${entry.slug}] ok — ${(result.bytes / 1024).toFixed(1)} KB, ${result.nodes} nodes\n`,
-      );
-    } catch (error) {
-      result.error = error instanceof Error ? error.message : String(error);
-      process.stdout.write(`[${entry.slug}] FAILED — ${result.error}\n`);
+        process.stdout.write(
+          `[${entry.slug}] ok — ${(result.bytes / 1024).toFixed(1)} KB, ` +
+          `${result.elements} elements\n`,
+        );
+      } catch (error) {
+        result.error = error instanceof Error ? error.message : String(error);
+        process.stdout.write(`[${entry.slug}] FAILED — ${result.error}\n`);
+      }
+
+      result.ms = Date.now() - started;
+      results.push(result);
     }
 
-    result.ms = Date.now() - started;
-    results.push(result);
+    await writeFile(`${OUT}/results.json`, JSON.stringify(results, null, 2), 'utf8');
+    await writeFile(`${OUT}/index.html`, renderIndex(results), 'utf8');
+    process.stdout.write('\nDone. Open /out/sites/index.html\n');
+  } finally {
+    await browser.close();
   }
+}
 
-  await browser.close();
-  await writeFile(`${OUT}/results.json`, JSON.stringify(results, null, 2), 'utf8');
-  await writeFile(`${OUT}/index.html`, renderIndex(results), 'utf8');
-  process.stdout.write('\nDone. Open /out/sites/index.html\n');
+async function screenshot(browser, url, path, fullPage) {
+  const page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+  try {
+    await page.goto(url, { waitUntil: 'load', timeout: 90_000 });
+    await page.evaluate(async () => {
+      if (document.fonts?.ready) await document.fonts.ready;
+    });
+    await page.waitForTimeout(1000);
+    await page.screenshot({ path, fullPage });
+  } finally {
+    await page.close();
+  }
 }
 
 function escapeHtml(value) {
@@ -130,9 +122,9 @@ function renderIndex(results) {
         <td><a href="#${result.slug}">${escapeHtml(result.name)}</a></td>
         <td>${result.tier}</td>
         <td class="${result.ok ? 'ok' : 'fail'}">${result.ok ? 'captured' : 'failed'}</td>
-        <td>${result.ok ? `${(result.bytes / 1024).toFixed(1)} KB` : '—'}</td>
-        <td>${result.ok ? result.nodes : '—'}</td>
-        <td>${(result.ms / 1000).toFixed(1)}s</td>
+        <td class="num">${result.ok ? `${(result.bytes / 1024).toFixed(1)} KB` : '—'}</td>
+        <td class="num">${result.ok ? result.elements : '—'}</td>
+        <td class="num">${(result.ms / 1000).toFixed(1)}s</td>
       </tr>`,
     )
     .join('\n');
@@ -155,7 +147,8 @@ function renderIndex(results) {
             </figure>
           </div>
           <p class="meta">
-            ${(result.bytes / 1024).toFixed(1)} KB · ${result.nodes} nodes · ${(result.ms / 1000).toFixed(1)}s ·
+            ${(result.bytes / 1024).toFixed(1)} KB · ${result.elements} elements ·
+            ${(result.ms / 1000).toFixed(1)}s ·
             <a href="${result.slug}.html" target="_blank" rel="noreferrer">open live output</a> ·
             <a href="${result.slug}-output-full.png" target="_blank" rel="noreferrer">full-page screenshot</a>
           </p>`
@@ -165,7 +158,6 @@ function renderIndex(results) {
         <div class="case-head">
           <h2>${escapeHtml(result.name)}</h2>
           <span class="badge tier-${result.tier}">Tier ${result.tier}</span>
-          <span class="verdict ${result.vClass}">${escapeHtml(result.verdict)}</span>
           <a class="source" href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">source →</a>
         </div>
         ${body}
@@ -195,6 +187,7 @@ function renderIndex(results) {
   table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 28px; }
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #222733; }
   th { color: #9aa0aa; font-weight: 600; }
+  td.num { font-variant-numeric: tabular-nums; }
   a { color: #7cc4ff; text-decoration: none; }
   a:hover { text-decoration: underline; }
   .ok { color: #6ee7a0; }
@@ -206,10 +199,6 @@ function renderIndex(results) {
   .tier-1 { background: #123524; color: #6ee7a0; }
   .tier-2 { background: #33280f; color: #f3c969; }
   .tier-3 { background: #341a1a; color: #ff8a8a; }
-  .verdict { font-size: 11px; padding: 3px 8px; border-radius: 999px; font-weight: 600; }
-  .v-good { background: #123524; color: #6ee7a0; }
-  .v-warn { background: #33280f; color: #f3c969; }
-  .v-bad { background: #341a1a; color: #ff8a8a; }
   .source { margin-left: auto; font-size: 13px; }
   .shots { display: flex; gap: 16px; align-items: flex-start; }
   @media (max-width: 820px) { .shots { flex-direction: column; } }
@@ -230,12 +219,12 @@ function renderIndex(results) {
 <body>
 <header>
   <h1>skeleton — 5 real sites</h1>
-  <p>Flow mode, 1440×900, seed 42. Left: original top. Right: generated top. Click any screenshot for full size.</p>
+  <p>Clone mode, 1440×900, seed 42. Left: original top. Right: generated top. Text is lorem and every image is a placehold.co placeholder.</p>
 </header>
 <div class="wrap">
   <table>
     <thead>
-      <tr><th>Page</th><th>Tier</th><th>Status</th><th>Output</th><th>Nodes</th><th>Time</th></tr>
+      <tr><th>Page</th><th>Tier</th><th>Status</th><th>Output</th><th>Elements</th><th>Time</th></tr>
     </thead>
     <tbody>
 ${rows}

@@ -2,27 +2,32 @@
 
 ## Next
 
-- [ ] Multi-breakpoint capture (390 / 768 / 1440) and inference:
-      - fixed px vs relative widths
-      - grid tracks back to `fr`
-      - media queries only where layout mode changes
-- [ ] `--mode absolute` fallback for pages that reconstruct badly
-- [ ] Drop fixed overlays (cookie banners, chat widgets, modals)
-- [ ] Image placeholders tinted with the dominant brand color (`--sample-images`)
-- [ ] Design tokens: emit `:root` palette, spacing scale, type scale
-- [ ] Text bars mode (`--text bars`) as an alternative to lorem
-- [ ] Collapse single-child wrapper divs
-- [ ] Infer semantics for generic `div`s (`header`, `nav`, `main`, `h1`)
+- [ ] Computed-style emitter (the anonymized middle ground): walk the live DOM,
+      emit a curated computed-style subset per element instead of the page's
+      stylesheet. Target the same fidelity without borrowed CSS.
+- [ ] Regenerate class names and ids, rewrite selectors to match.
+- [ ] `--assets inline`: inline images/fonts as data URIs for a self-contained
+      file (accept the size).
+- [ ] Freeze time and animations so carousels and rotating heroes are
+      deterministic across reruns.
+- [ ] `--wait <selector>` / `--wait-ms` escape hatches for slow hydration.
+- [ ] Clone open shadow roots instead of light DOM only.
+- [ ] Robust `srcset` parser (commas inside `data:` URIs).
+- [ ] Drop fixed overlays (cookie banners, chat widgets, modals).
+- [ ] Prune CSS rules that match nothing in the cloned DOM.
 
 ## Quality
 
-- [ ] Verification pass: screenshot the output and diff against the original
-- [ ] Unit tests for classification, grid inference, and flex sizing
-- [ ] Fixture-based snapshot tests
-- [ ] Commit a lockfile and pin the Docker image/package versions together
+- [x] Verification pass: screenshot the output and diff against the original
+      (`test/suite.mjs` now derives verdicts from the measured diff).
+- [ ] Mask text regions in the diff so the score measures layout, not lorem.
+- [ ] Fixture tests for the inlining and clone passes: `file://` stylesheets,
+      `@import`, `srcset`, cross-origin sheets, late-injected `<link>`.
+- [ ] Typecheck + fixture run in CI.
+- [x] Commit a lockfile and pin the Docker image/package versions together.
 
 ## Later
 
-- [ ] JSON layout tree output
+- [ ] JSON DOM output
 - [ ] React / Tailwind emitter
 - [ ] Web UI

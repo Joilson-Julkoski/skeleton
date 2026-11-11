@@ -2,12 +2,9 @@
 import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { capture } from './capture.js';
-import { emitHtml } from './emit.js';
-import { buildLayout } from './extract.js';
-import { makeRng } from './lorem.js';
+import { clonePage } from './clone.js';
 
-const USAGE = `skeleton - turn a web page into an anonymized layout skeleton
+const USAGE = `skeleton - copy a page's rendered layout and replace its content
 
 Usage:
   skeleton <url> [options]
@@ -16,7 +13,7 @@ Options:
   -o, --out <file>        Output HTML file (default: out.html)
       --viewport <WxH>    Capture viewport (default: 1440x900)
       --seed <number>     Lorem seed (default: 42)
-      --title <text>      Output page title (default: "Anonymized layout")
+      --title <text>      Output page title (default: "Placeholder clone")
   -h, --help              Show this help
 
 Examples:
@@ -31,7 +28,7 @@ async function main(): Promise<void> {
       out: { type: 'string', short: 'o', default: 'out.html' },
       viewport: { type: 'string', default: '1440x900' },
       seed: { type: 'string', default: '42' },
-      title: { type: 'string', default: 'Anonymized layout' },
+      title: { type: 'string', default: 'Placeholder clone' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
@@ -57,18 +54,19 @@ async function main(): Promise<void> {
   }
 
   process.stderr.write(`Capturing ${url} at ${width}x${height}...\n`);
-  const page = await capture({ url, viewport: { width, height } });
-  if (!page.root) throw new Error('Could not extract a layout from this page.');
-
-  const layout = buildLayout(page.root, makeRng(seed));
-  const html = emitHtml(layout, {
+  const result = await clonePage({
+    url,
+    viewport: { width, height },
+    seed,
     title: String(values.title),
-    background: page.pageBackground,
   });
 
   const outPath = resolve(String(values.out));
-  await writeFile(outPath, html, 'utf8');
-  process.stderr.write(`Wrote ${outPath} (${(html.length / 1024).toFixed(1)} KB)\n`);
+  await writeFile(outPath, result.html, 'utf8');
+  process.stderr.write(
+    `Wrote ${outPath} (${(result.html.length / 1024).toFixed(1)} KB, ` +
+    `${result.elementCount} elements)\n`,
+  );
 }
 
 main().catch((error: unknown) => {

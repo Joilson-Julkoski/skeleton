@@ -17,5 +17,5 @@ RUN npm run build
 # UID 1000, or override with `--user "$(id -u):$(id -g)"`.
 USER pwuser
 
-# Chromium in a container needs --no-sandbox; see src/capture.ts.
+# Chromium in a container needs --no-sandbox; see src/clone.ts.
 ENTRYPOINT ["node", "dist/cli.js"]

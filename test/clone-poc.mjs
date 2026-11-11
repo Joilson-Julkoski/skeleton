@@ -1,14 +1,11 @@
 /**
- * POC: "copy the page, swap the content" — the approach the skeleton pipeline
- * deliberately avoids.
+ * Exploratory POC: "copy the page, swap the content".
  *
- * Variant A (placeholder): keeps the live DOM + the site's own CSS, replaces
- *   text with lorem, img/svg/video/canvas with same-size gray boxes, kills
- *   url() backgrounds, drops scripts/meta/links, strips content attributes.
- * Variant B (images kept): same, but media is left intact.
- *
- * It does NOT anonymize: class names, ids and the original stylesheet survive.
- * That is the point of the experiment.
+ * Historical POC: "copy the page, swap the content". The real implementation is
+ * src/clone.ts; it now replaces every image with a placehold.co placeholder.
+ * This script is kept only because it renders a three-way comparison
+ * (original / gray placeholders / images kept) in out/poc/, which is useful for
+ * discussing the fidelity trade-off.
  *
  * Run inside the project image:
  *   docker run --rm --ipc=host --user "$(id -u):$(id -g)" -e HOME=/tmp \

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Turn a web page into an anonymized, responsive layout skeleton.",
+  "description": "Copy a web page's rendered layout and replace its content with lorem and placeholders.",
   "bin": {
     "skeleton": "dist/cli.js"
   },
