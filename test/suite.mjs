@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { clonePage } from '../dist/clone.js';
 
 const OUT = process.env.OUT_DIR ?? '/out/tests';
-const IMAGE_MODE = process.env.IMAGE_MODE === 'mosaic' ? 'mosaic' : 'solid';
+const IMAGE_MODE = process.env.IMAGE_MODE === 'solid' ? 'solid' : 'mosaic';
 const VIEWPORT = { width: 1440, height: 900 };
 const SEED = 42;
 

@@ -4,10 +4,10 @@ Copy a web page's rendered layout and replace its content.
 
 The tool loads a page in headless Chromium, keeps the **live rendered DOM** and
 the page's **own stylesheets**, and writes a single HTML file in which every text
-node is lorem and every image URL points at a `placehold.co` placeholder sized to
-the original box and tinted with that image's dominant colour. Layout,
-typography, color and spacing survive exactly as the browser rendered them; the
-imagery is deliberately neutral.
+node is lorem and every image is replaced by a tiny 16-cell colour mosaic of the
+original (or a solid `placehold.co` block when the image cannot be downloaded).
+Layout, typography, color and spacing survive exactly as the browser rendered
+them; the imagery is deliberately coarse.
 
 It is a **layout copy, not an anonymizer**: original class names, ids and CSS
 survive. See [Fidelity vs. anonymization](#fidelity-vs-anonymization).
@@ -23,9 +23,9 @@ docker run --rm --ipc=host \
   skeleton https://example.com -o /out/page.html
 ```
 
-Open `out/page.html` in a browser. Images load from `placehold.co` and webfonts
-still load from the original site, so the file needs network access to look
-right.
+Open `out/page.html` in a browser. Mosaics are embedded in the file, webfonts
+still load from the original site, and only fallback images hit `placehold.co`,
+so the file needs network access for fonts and fallbacks.
 
 For a local file, mount it and pass a `file://` URL:
 
@@ -46,8 +46,8 @@ skeleton <url> [options]
       --viewport <WxH>    Capture viewport (default: 1440x900)
       --seed <number>     Lorem seed (default: 42)
       --title <text>      Output page title (default: "Placeholder clone")
-      --images <mode>     solid (dominant-colour block) or mosaic (16-cell
-                          pixel grid) (default: solid)
+      --images <mode>     mosaic (16-cell pixel grid) or solid (dominant-colour
+                          block) (default: mosaic)
   -h, --help              Show help
 ```
 
@@ -55,27 +55,25 @@ Reruns with the same seed produce identical lorem, which makes diffs useful.
 
 ### Image placeholders
 
-Every image is replaced by a solid [placehold.co](https://placehold.co/) block
-whose background is the **dominant colour of the original image**. Placeholders
-have no label; they are just coloured boxes.
-
-Pass `--images mosaic` to keep a coarse version of the image instead: each image
-is downloaded and reduced to a grid with 16 cells on its long edge (proportional
+By default every image is replaced by a coarse version of itself: it is
+downloaded and reduced to a grid with **16 cells on its long edge** (proportional
 on the short edge), each cell filled with that region's most common colour. The
-grid is embedded as a tiny 16-cell PNG data URI and upscaled with
+grid is embedded as a tiny PNG data URI and upscaled with
 `image-rendering: pixelated`, so image-led layouts keep their colour composition
-without reproducing the photo. CSS background images still use solid blocks, and
-images that cannot be fetched or decoded fall back to them too.
+without reproducing the photo. This covers `<img>` elements and CSS image
+`url()`s (backgrounds, masks, border images, inline styles).
 
-Mosaics are embedded per `<img>` occurrence, so a logo reused across a page
-duplicates its (small) data URI each time.
+When an image cannot be downloaded or decoded, the replacement falls back to a
+solid [placehold.co](https://placehold.co/) block tinted with its dominant colour
+(or `d8d8d8` when nothing could be sampled). Pass `--images solid` to use those
+solid blocks for every image instead.
+
+Mosaics are embedded per occurrence, so a logo reused across a page duplicates
+its (small) data URI each time.
 
 Colour sampling covers `<img>` (including `srcset`), posters, inline styles and
-stylesheet image `url()`s. Very large or unreachable images fall back to
-`d8d8d8`.
-
-CSS image placeholders use each URL's sampled colour with a nominal `1200x800`
-size, then are stretched by the page's own `background-size`.
+stylesheet image `url()`s. Very large or unreachable images fall back to the
+solid placeholder.
 
 ## How it works
 
@@ -93,14 +91,14 @@ load  ->  settle  ->  inline  ->  sample  ->  clone  ->  emit
 3. **inline** — reads every stylesheet the page actually applied. Cross-origin
    sheets are fetched through the browser context so cookies and referrers
    match. `@import` and `@charset` are stripped, webfont URLs become absolute,
-   and image `url()` references become `placehold.co` placeholders.
+   and image `url()` references become mosaic PNGs (or solid `placehold.co`
+   fallbacks).
 4. **sample** — fetches every unique image the page references, downsizes it in
-   a canvas, and picks its most frequent colour bucket. That colour becomes the
-   placeholder background; in mosaic mode it also becomes one of 16 cells in a
-   small grid used as the replacement image.
+   a canvas, and picks its most frequent colour bucket. In mosaic mode (the
+   default) it also builds a 16-cell grid used as the replacement image.
 5. **clone** — deep-clones `<body>`, replaces text with lorem of the same word
-   count, strips content attributes, points every image at a same-size
-   `placehold.co` placeholder (or the 16-cell mosaic in mosaic mode), and swaps
+   count, strips content attributes, points every image at a same-size 16-cell
+   mosaic PNG (or a solid `placehold.co` fallback), and swaps
    video/iframe/canvas/svg elements for placeholder images of the same rendered
    size.
 6. **emit** — writes one self-contained HTML file: inlined CSS, the cloned body,
@@ -112,8 +110,8 @@ load  ->  settle  ->  inline  ->  sample  ->  clone  ->  emit
 - every text node (lorem, sized to the original word count)
 - links (`href="#"`), `alt`, `title`, `value`, `placeholder`, `content`
 - every `src`, `srcset`, `poster` and image `url()` (backgrounds, masks,
-  borders, data URIs), replaced by `https://placehold.co/<width>x<height>` or
-  `https://placehold.co/1200x800` for CSS
+  borders, data URIs), replaced by the sampled mosaic PNG, or by
+  `https://placehold.co/<width>x<height>` when the original cannot be downloaded
 - `aria-*`, `data-*` and event handlers (attributes referenced by CSS
   selectors are kept so scoped styles still match)
 - scripts, `meta`, `link`, `base`, `noscript`, `template`
@@ -130,16 +128,15 @@ load  ->  settle  ->  inline  ->  sample  ->  clone  ->  emit
 
 - **Not anonymized.** Class names, ids and the full original stylesheet are in
   the output; anything brand-specific that lives in CSS or markup survives.
-- **Needs network** for `placehold.co` and webfonts.
-- **Media is generic.** In solid mode CSS image placeholders use each URL's
-  sampled colour with a nominal 1200×800 size and are stretched by the page's
-  `background-size`. In mosaic mode `<img>` elements keep a 16-cell colour grid,
-  but CSS backgrounds, `<video>`, `<iframe>`, canvas and inline SVG still become
+- **Needs network** for webfonts, and for `placehold.co` when an image falls
+  back to a solid block.
+- **Media is generic.** Mosaics keep `<img>` elements and CSS image `url()`s as
+  16-cell colour grids; `<video>`, `<iframe>`, canvas and inline SVG still become
   plain placeholder images. Image-led layouts keep their boxes but lose their
-  imagery by design.
+  detail by design.
 - **Colour sampling is best effort.** Images that cannot be fetched, decoded or
-  exceed the sampling budget keep `d8d8d8`. Only the first 1000 unique image URLs
-  are sampled.
+  exceed the sampling budget fall back to a solid `d8d8d8` placeholder. Only the
+  first 1000 unique image URLs are sampled.
 - **Size.** The whole stylesheet is inlined: 34 KB for Hacker News, 576 KB for
   Wikipedia, 3.9 MB for GitHub.
 - **Frozen in time.** JS-driven content is captured once. Carousels and rotating
@@ -159,7 +156,7 @@ The trade is:
 | approach | fidelity | size | anonymized |
 |---|---|---|---|
 | measured flow rebuild (old) | 50–80% | 25–150 KB | yes |
-| copy DOM + CSS + placehold.co (current) | structure exact, media replaced | 34 KB–3.9 MB | no |
+| copy DOM + CSS + mosaics (current) | structure exact, media replaced | 34 KB–3.9 MB | no |
 
 If anonymization is the requirement, the middle ground is to emit *computed*
 styles per element instead of the original stylesheet — same fidelity, no
@@ -169,7 +166,8 @@ borrowed CSS. See `TODO.md`.
 
 `test/suite.mjs` captures a matrix of representative pages and writes one
 placeholder clone per site — nothing else (no screenshots, no report, no JSON).
-Set `IMAGE_MODE=mosaic` to write the mosaic variant instead.
+It writes mosaics by default; set `IMAGE_MODE=solid` to write the solid variant
+instead.
 
 ```bash
 docker run --rm --ipc=host \

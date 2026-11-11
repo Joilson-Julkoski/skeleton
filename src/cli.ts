@@ -14,8 +14,8 @@ Options:
       --viewport <WxH>    Capture viewport (default: 1440x900)
       --seed <number>     Lorem seed (default: 42)
       --title <text>      Output page title (default: "Placeholder clone")
-      --images <mode>     solid (dominant-colour block) or mosaic (16-cell
-                          pixel grid) (default: solid)
+      --images <mode>     mosaic (16-cell pixel grid) or solid (dominant-colour
+                          block) (default: mosaic)
   -h, --help              Show this help
 
 Examples:
@@ -31,7 +31,7 @@ async function main(): Promise<void> {
       viewport: { type: 'string', default: '1440x900' },
       seed: { type: 'string', default: '42' },
       title: { type: 'string', default: 'Placeholder clone' },
-      images: { type: 'string', default: 'solid' },
+      images: { type: 'string', default: 'mosaic' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });

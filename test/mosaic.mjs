@@ -90,6 +90,11 @@ function attribute(tag, name) {
   return match ? match[1] : null;
 }
 
+function cssRule(html, selector) {
+  const match = html.match(new RegExp(`${selector}\\s*\\{([^}]*)\\}`));
+  return match ? match[1] : null;
+}
+
 function near(actual, expected, tolerance = 3) {
   return expected.every((value, index) => Math.abs(actual[index] - value) <= tolerance);
 }
@@ -104,7 +109,6 @@ const result = await clonePage({
   viewport: { width: 1440, height: 900 },
   seed: 42,
   title: 'Mosaic fixture',
-  images: 'mosaic',
   timeoutMs: 60_000,
 });
 
@@ -172,6 +176,57 @@ if (!broken) {
   );
   check(attribute(broken, 'data-mosaic') === null, '#broken should not have a mosaic');
 }
+
+const background = cssRule(result.html, '\\.css-bg');
+if (!background) {
+  failures.push('missing .css-bg rule');
+} else {
+  const match = background.match(/url\("(data:image\/png;base64,[^"]+)"\)/);
+  if (!match) {
+    failures.push('.css-bg was not rewritten to a mosaic PNG');
+  } else {
+    try {
+      const png = decodePng(match[1]);
+      check(
+        png.width === 16 && png.height === 9,
+        `.css-bg expected 16x9, got ${png.width}x${png.height}`,
+      );
+      check(near(png.pixel(0, 4), [225, 29, 72]), '.css-bg left is not red');
+      check(near(png.pixel(15, 4), [37, 99, 235]), '.css-bg right is not blue');
+    } catch (error) {
+      failures.push(`.css-bg: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+check(
+  result.html.includes('*{image-rendering:pixelated !important}'),
+  'missing the global pixelated rule',
+);
+
+const solid = await clonePage({
+  url: FIXTURE,
+  viewport: { width: 1440, height: 900 },
+  seed: 42,
+  title: 'Mosaic fixture',
+  images: 'solid',
+  timeoutMs: 60_000,
+});
+const solidTags = solid.html.match(/<img\b[^>]*>/gi) ?? [];
+check(solidTags.length === 4, `solid: expected 4 <img> elements, got ${solidTags.length}`);
+for (const tag of solidTags) {
+  const src = attribute(tag, 'src') ?? '';
+  check(
+    src.startsWith('https://placehold.co/'),
+    `solid: unexpected non-placeholder src ${src.slice(0, 48)}`,
+  );
+  check(attribute(tag, 'data-mosaic') === null, 'solid: mosaic attribute should not be present');
+}
+check(!solid.html.includes('image-rendering:pixelated'), 'solid: pixelated rule should not be present');
+const solidBackground = cssRule(solid.html, '\\.css-bg');
+check(
+  solidBackground?.includes('placehold.co/1200x800/') === true,
+  'solid: .css-bg should use a placehold.co fallback',
+);
 
 if (failures.length > 0) {
   process.stdout.write(`${failures.length} mosaic check(s) failed:\n`);

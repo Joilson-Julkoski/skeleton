@@ -13,7 +13,7 @@ export interface CloneOptions {
   title: string;
   /**
    * How images are replaced: a solid dominant-colour block (`solid`) or a
-   * 16-cell pixel grid of the original (`mosaic`). Defaults to `solid`.
+   * 16-cell pixel grid of the original (`mosaic`). Defaults to `mosaic`.
    */
   images?: ImageMode;
   /** Also return a PNG of the original page at the captured viewport. */
@@ -88,14 +88,11 @@ export async function clonePage(options: CloneOptions): Promise<CloneResult> {
       : undefined;
 
     const stylesheets = await readStylesheets(page, context, options.url);
-    const mode = options.images ?? 'solid';
+    const mode = options.images ?? 'mosaic';
     const assets = await detectImageAssets(page, context, stylesheets, timeout, mode);
-    const colours = new Map(
-      Array.from(assets, ([key, asset]) => [key, asset.colour] as const),
-    );
     const keepAttrs = cssAttributeNames(stylesheets);
 
-    const css = renderCss(stylesheets, colours);
+    const css = renderCss(stylesheets, assets, mode);
 
     const body = await page.evaluate(cloneDocument, {
       seed: options.seed,
@@ -605,13 +602,18 @@ async function sampleImages({
 /**
  * Inlines every stylesheet in cascade order, so the output never issues a CSS
  * request. Image URLs in backgrounds, masks and similar properties become
- * placehold.co placeholders; fonts still point at their original URLs.
+ * mosaics (or solid placehold.co fallbacks); fonts still point at their
+ * original URLs.
  */
-function renderCss(sheets: StyleSheetSource[], colours: Map<string, string>): string {
+function renderCss(
+  sheets: StyleSheetSource[],
+  assets: Map<string, ImageAsset>,
+  mode: ImageMode,
+): string {
   const chunks: string[] = [];
   for (const sheet of sheets) {
     if (!sheet.text.trim()) continue;
-    chunks.push(finishSheet(sheet.text, sheet.media, sheet.base, colours));
+    chunks.push(finishSheet(sheet.text, sheet.media, sheet.base, assets, mode));
   }
   return chunks.join('\n');
 }
@@ -620,10 +622,11 @@ function finishSheet(
   text: string,
   media: string,
   base: string,
-  colours: Map<string, string>,
+  assets: Map<string, ImageAsset>,
+  mode: ImageMode,
 ): string {
   let css = stripAtImports(text).replace(/@charset[^;]+;/gi, '');
-  css = placeholderImages(absolutizeUrls(css, base), colours);
+  css = placeholderImages(absolutizeUrls(css, base), assets, mode);
   return media ? `@media ${media}{\n${css}\n}` : css;
 }
 
@@ -717,7 +720,11 @@ function cloneDocument({
       ) => {
         const url = (single ?? double ?? bare ?? '').trim();
         if (/^(#|about:)/i.test(url)) return match;
-        return `url("${placeholderUrl(1200, 800, colourFor(url))}")`;
+        const asset = assetFor(url);
+        const replacement = asset?.mosaic
+          ? asset.mosaic.uri
+          : placeholderUrl(1200, 800, asset?.colour);
+        return `url("${replacement}")`;
       },
     );
 
@@ -912,8 +919,9 @@ function assemble(
 ): string {
   // The mosaics are 16-cell PNGs; without this the browser smooths them into
   // gradients instead of showing the grid. Every raster image in the output is
-  // either a mosaic or a flat colour block, so scoping to img is safe.
-  const mosaicRule = images === 'mosaic' ? '\nimg{image-rendering:pixelated !important}' : '';
+  // either a mosaic or a flat colour block, so a global rule is safe (it also
+  // reaches mosaics used as CSS background/mask/border images).
+  const mosaicRule = images === 'mosaic' ? '\n*{image-rendering:pixelated !important}' : '';
   const safeCss = (css + mosaicRule).replace(/<\/style/gi, '<\\/style');
   const htmlAttrs = [
     `lang="${escapeAttr(body.lang || 'en')}"`,
@@ -958,12 +966,14 @@ function absolutizeUrls(css: string, base: string | null): string {
 
 /**
  * Rewrites every image `url()` reference (backgrounds, masks, border images,
- * data URIs, etc.) to a placehold.co image. `@font-face` blocks are shielded so
+ * data URIs, etc.) to the sampled mosaic, or to a solid placehold.co fallback
+ * when the image could not be downloaded. `@font-face` blocks are shielded so
  * webfonts keep loading from their original host.
  */
 function placeholderImages(
   css: string,
-  colours: Map<string, string>,
+  assets: Map<string, ImageAsset>,
+  mode: ImageMode,
 ): string {
   const fontFaces: string[] = [];
   const shielded = css.replace(/@font-face\s*\{[^}]*\}/gi, (block) => {
@@ -981,8 +991,12 @@ function placeholderImages(
     ) => {
       const url = (single ?? double ?? bare ?? '').trim();
       if (/^(#|about:)/i.test(url)) return match;
-      const detected = colours.get(urlKey(url)) ?? colours.get(urlKey(canonicalUrl(url)));
-      return `url("${placeholderUrl(1200, 800, detected)}")`;
+      const asset = assets.get(urlKey(url)) ?? assets.get(urlKey(canonicalUrl(url)));
+      const replacement =
+        mode === 'mosaic' && asset?.mosaic
+          ? asset.mosaic.uri
+          : placeholderUrl(1200, 800, asset?.colour);
+      return `url("${replacement}")`;
     },
   );
 
