@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mosaic fixture</title>
+<style>
+  body { margin: 0; padding: 20px; font-family: sans-serif; background: #fff; }
+  img { display: block; margin-bottom: 16px; }
+  .quad { width: 400px; height: 400px; }
+  .wide { width: 800px; height: 100px; }
+  .alpha { width: 200px; height: 200px; }
+  .broken { width: 120px; height: 80px; background: #eee; }
+</style>
+</head>
+<body>
+  <!-- Four solid quadrants, 400x400: red / green / blue / white. -->
+  <img id="quad" class="quad" width="400" height="400" alt="quadrants"
+       src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MDAiIGhlaWdodD0iNDAwIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2UxMWQ0OCIvPjxyZWN0IHg9IjIwMCIgd2lkdGg9IjIwMCIgaGVpZ2h0PSIyMDAiIGZpbGw9IiMxNmEzNGEiLz48cmVjdCB5PSIyMDAiIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjMjU2M2ViIi8+PHJlY3QgeD0iMjAwIiB5PSIyMDAiIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjZmZmZmZmIi8+PC9zdmc+">
+
+  <!-- 8:1 strip: yellow / cyan. Exercises 16 cells on the long edge. -->
+  <img id="wide" class="wide" width="800" height="100" alt="wide strip"
+       src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MDAiIGhlaWdodD0iMTAwIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2ZhY2MxNSIvPjxyZWN0IHg9IjQwMCIgd2lkdGg9IjQwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiMwNmI2ZDQiLz48L3N2Zz4=">
+
+  <!-- Transparent square with an opaque magenta circle. -->
+  <img id="alpha" class="alpha" width="200" height="200" alt="alpha"
+       src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMDAiIHI9IjYwIiBmaWxsPSIjZDk0NmVmIi8+PC9zdmc+">
+
+  <!-- Undecodable image: must fall back to a solid placehold.co block. -->
+  <img id="broken" class="broken" width="120" height="80" alt="broken"
+       src="data:image/png;base64,AAAA">
+</body>
+</html>

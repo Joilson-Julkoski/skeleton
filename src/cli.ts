@@ -14,6 +14,8 @@ Options:
       --viewport <WxH>    Capture viewport (default: 1440x900)
       --seed <number>     Lorem seed (default: 42)
       --title <text>      Output page title (default: "Placeholder clone")
+      --images <mode>     solid (dominant-colour block) or mosaic (16-cell
+                          pixel grid) (default: solid)
   -h, --help              Show this help
 
 Examples:
@@ -29,6 +31,7 @@ async function main(): Promise<void> {
       viewport: { type: 'string', default: '1440x900' },
       seed: { type: 'string', default: '42' },
       title: { type: 'string', default: 'Placeholder clone' },
+      images: { type: 'string', default: 'solid' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
@@ -53,12 +56,18 @@ async function main(): Promise<void> {
     throw new Error(`Invalid --seed "${values.seed}".`);
   }
 
+  const images = String(values.images);
+  if (images !== 'solid' && images !== 'mosaic') {
+    throw new Error(`Invalid --images "${images}". Expected solid or mosaic.`);
+  }
+
   process.stderr.write(`Capturing ${url} at ${width}x${height}...\n`);
   const result = await clonePage({
     url,
     viewport: { width, height },
     seed,
     title: String(values.title),
+    images,
   });
 
   const outPath = resolve(String(values.out));

@@ -36,7 +36,11 @@ jobs:
 
       - run: npx playwright install --with-deps chromium
 
+      - run: npm test
+
       - run: npm run examples
+
+      - run: npm run examples:mosaic
 
       # Zero-byte marker so Pages serves the clones verbatim.
       - run: touch out/.nojekyll

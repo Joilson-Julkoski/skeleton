@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { clonePage } from '../dist/clone.js';
 
 const OUT = process.env.OUT_DIR ?? '/out/tests';
+const IMAGE_MODE = process.env.IMAGE_MODE === 'mosaic' ? 'mosaic' : 'solid';
 const VIEWPORT = { width: 1440, height: 900 };
 const SEED = 42;
 
@@ -29,13 +30,14 @@ async function main() {
         viewport: VIEWPORT,
         seed: SEED,
         title: 'Placeholder clone',
+        images: IMAGE_MODE,
         timeoutMs: 90_000,
       });
 
       await writeFile(`${OUT}/${entry.slug}.html`, clone.html, 'utf8');
       captured += 1;
       process.stdout.write(
-        `[${entry.slug}] ok — ${(Buffer.byteLength(clone.html) / 1024).toFixed(1)} KB, ` +
+        `[${entry.slug}] ${IMAGE_MODE} ok — ${(Buffer.byteLength(clone.html) / 1024).toFixed(1)} KB, ` +
         `${clone.elementCount} elements, ${((Date.now() - started) / 1000).toFixed(1)}s\n`,
       );
     } catch (error) {

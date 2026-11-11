@@ -46,6 +46,8 @@ skeleton <url> [options]
       --viewport <WxH>    Capture viewport (default: 1440x900)
       --seed <number>     Lorem seed (default: 42)
       --title <text>      Output page title (default: "Placeholder clone")
+      --images <mode>     solid (dominant-colour block) or mosaic (16-cell
+                          pixel grid) (default: solid)
   -h, --help              Show help
 ```
 
@@ -56,6 +58,17 @@ Reruns with the same seed produce identical lorem, which makes diffs useful.
 Every image is replaced by a solid [placehold.co](https://placehold.co/) block
 whose background is the **dominant colour of the original image**. Placeholders
 have no label; they are just coloured boxes.
+
+Pass `--images mosaic` to keep a coarse version of the image instead: each image
+is downloaded and reduced to a grid with 16 cells on its long edge (proportional
+on the short edge), each cell filled with that region's most common colour. The
+grid is embedded as a tiny 16-cell PNG data URI and upscaled with
+`image-rendering: pixelated`, so image-led layouts keep their colour composition
+without reproducing the photo. CSS background images still use solid blocks, and
+images that cannot be fetched or decoded fall back to them too.
+
+Mosaics are embedded per `<img>` occurrence, so a logo reused across a page
+duplicates its (small) data URI each time.
 
 Colour sampling covers `<img>` (including `srcset`), posters, inline styles and
 stylesheet image `url()`s. Very large or unreachable images fall back to
@@ -83,11 +96,13 @@ load  ->  settle  ->  inline  ->  sample  ->  clone  ->  emit
    and image `url()` references become `placehold.co` placeholders.
 4. **sample** — fetches every unique image the page references, downsizes it in
    a canvas, and picks its most frequent colour bucket. That colour becomes the
-   placeholder background.
+   placeholder background; in mosaic mode it also becomes one of 16 cells in a
+   small grid used as the replacement image.
 5. **clone** — deep-clones `<body>`, replaces text with lorem of the same word
    count, strips content attributes, points every image at a same-size
-   `placehold.co` placeholder, and swaps video/iframe/canvas/svg elements for
-   placeholder images of the same rendered size.
+   `placehold.co` placeholder (or the 16-cell mosaic in mosaic mode), and swaps
+   video/iframe/canvas/svg elements for placeholder images of the same rendered
+   size.
 6. **emit** — writes one self-contained HTML file: inlined CSS, the cloned body,
    and the original `<html>`/`<body>` classes and inline styles so the page's own
    selectors still match.
@@ -116,10 +131,12 @@ load  ->  settle  ->  inline  ->  sample  ->  clone  ->  emit
 - **Not anonymized.** Class names, ids and the full original stylesheet are in
   the output; anything brand-specific that lives in CSS or markup survives.
 - **Needs network** for `placehold.co` and webfonts.
-- **Media is generic.** CSS image placeholders use each URL's sampled colour with
-  a nominal 1200×800 size and are stretched by the page's `background-size`;
-  `<video>`, `<iframe>`, canvas and inline SVG elements become plain placeholder
-  images. Image-led layouts keep their boxes but lose their imagery by design.
+- **Media is generic.** In solid mode CSS image placeholders use each URL's
+  sampled colour with a nominal 1200×800 size and are stretched by the page's
+  `background-size`. In mosaic mode `<img>` elements keep a 16-cell colour grid,
+  but CSS backgrounds, `<video>`, `<iframe>`, canvas and inline SVG still become
+  plain placeholder images. Image-led layouts keep their boxes but lose their
+  imagery by design.
 - **Colour sampling is best effort.** Images that cannot be fetched, decoded or
   exceed the sampling budget keep `d8d8d8`. Only the first 1000 unique image URLs
   are sampled.
@@ -152,6 +169,7 @@ borrowed CSS. See `TODO.md`.
 
 `test/suite.mjs` captures a matrix of representative pages and writes one
 placeholder clone per site — nothing else (no screenshots, no report, no JSON).
+Set `IMAGE_MODE=mosaic` to write the mosaic variant instead.
 
 ```bash
 docker run --rm --ipc=host \
@@ -165,12 +183,13 @@ Or locally:
 
 ```bash
 npm run examples
+npm run examples:mosaic
 ```
 
-Clones land in `out/tests/<slug>.html` (the Docker run writes to the same path
-inside the mounted `out/`). Open one directly in a browser; images load from
-`placehold.co` and webfonts from the original site, so the file needs network
-access.
+Clones land in `out/tests/<slug>.html` (solid) and `out/mosaic/<slug>.html`
+(mosaic); the Docker run writes to the same paths inside the mounted `out/`.
+Open one directly in a browser; solid clones load images from `placehold.co`,
+mosaic clones embed them, and both load webfonts from the original site.
 
 Every push to `main` that touches `src/`, `test/` or the package files
 regenerates the clones and publishes them to GitHub Pages:
@@ -180,6 +199,11 @@ regenerates the clones and publishes them to GitHub Pages:
 - https://joilson-julkoski.github.io/skeleton/tests/bbc.html
 - https://joilson-julkoski.github.io/skeleton/tests/github.html
 - https://joilson-julkoski.github.io/skeleton/tests/apple.html
+- https://joilson-julkoski.github.io/skeleton/mosaic/wikipedia.html
+- https://joilson-julkoski.github.io/skeleton/mosaic/hackernews.html
+- https://joilson-julkoski.github.io/skeleton/mosaic/bbc.html
+- https://joilson-julkoski.github.io/skeleton/mosaic/github.html
+- https://joilson-julkoski.github.io/skeleton/mosaic/apple.html
 
 `test/clone-poc.mjs` is the exploratory script that led to clone mode; it
 generates the three-way comparison in `/poc/`. Superseded by `src/clone.ts`.

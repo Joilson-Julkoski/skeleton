@@ -11,7 +11,9 @@
     "build": "tsc",
     "dev": "npm run build && node dist/cli.js",
     "start": "node dist/cli.js",
-    "examples": "npm run build && OUT_DIR=out/tests node test/suite.mjs"
+    "test": "npm run build && node test/mosaic.mjs",
+    "examples": "npm run build && OUT_DIR=out/tests node test/suite.mjs",
+    "examples:mosaic": "npm run build && OUT_DIR=out/mosaic IMAGE_MODE=mosaic node test/suite.mjs"
   },
   "dependencies": {
     "playwright": "1.49.1"

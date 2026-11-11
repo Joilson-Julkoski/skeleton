@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium, type BrowserContext, type Page } from 'playwright';
 
+export type ImageMode = 'solid' | 'mosaic';
+
 export interface CloneOptions {
   url: string;
   viewport: { width: number; height: number };
@@ -9,6 +11,11 @@ export interface CloneOptions {
   seed: number;
   /** Output page title. */
   title: string;
+  /**
+   * How images are replaced: a solid dominant-colour block (`solid`) or a
+   * 16-cell pixel grid of the original (`mosaic`). Defaults to `solid`.
+   */
+  images?: ImageMode;
   /** Also return a PNG of the original page at the captured viewport. */
   screenshot?: boolean;
   timeoutMs?: number;
@@ -22,6 +29,18 @@ export interface CloneResult {
 }
 
 const FALLBACK_BACKGROUND = 'd8d8d8';
+
+interface MosaicAsset {
+  /** PNG data URI of the downsampled grid. */
+  uri: string;
+  width: number;
+  height: number;
+}
+
+interface ImageAsset {
+  colour: string;
+  mosaic?: MosaicAsset;
+}
 
 /**
  * Loads the page in headless Chromium and returns a self-contained HTML file
@@ -69,19 +88,23 @@ export async function clonePage(options: CloneOptions): Promise<CloneResult> {
       : undefined;
 
     const stylesheets = await readStylesheets(page, context, options.url);
-    const colours = await detectImageColours(page, context, stylesheets, timeout);
+    const mode = options.images ?? 'solid';
+    const assets = await detectImageAssets(page, context, stylesheets, timeout, mode);
+    const colours = new Map(
+      Array.from(assets, ([key, asset]) => [key, asset.colour] as const),
+    );
     const keepAttrs = cssAttributeNames(stylesheets);
 
     const css = renderCss(stylesheets, colours);
 
     const body = await page.evaluate(cloneDocument, {
       seed: options.seed,
-      colours: Object.fromEntries(colours),
+      assets: Object.fromEntries(assets),
       keepAttrs,
     });
 
     return {
-      html: assemble(css, body, options.title),
+      html: assemble(css, body, options.title, mode),
       elementCount: body.elementCount,
       pageTitle: body.pageTitle,
       originalScreenshot,
@@ -197,15 +220,17 @@ const COLOUR_CONCURRENCY = 8;
 
 /**
  * Samples every image the page references (DOM attributes, inline styles and
- * stylesheet `url()`s) and returns a URL-keyed map of dominant colours. Best
- * effort: images that cannot be fetched or decoded keep the fallback colour.
+ * stylesheet `url()`s) and returns a URL-keyed map of dominant colours. In
+ * mosaic mode each entry also carries a 16-cell PNG grid of the original.
+ * Best effort: images that cannot be fetched or decoded are left out.
  */
-async function detectImageColours(
+async function detectImageAssets(
   page: Page,
   context: BrowserContext,
   stylesheets: StyleSheetSource[],
   timeoutMs: number,
-): Promise<Map<string, string>> {
+  mode: ImageMode,
+): Promise<Map<string, ImageAsset>> {
   const urls = new Set<string>(await page.evaluate(collectMediaUrls));
   for (const sheet of stylesheets) {
     if (!sheet.text.trim()) continue;
@@ -228,7 +253,7 @@ async function detectImageColours(
   if (samples.length === 0) return new Map();
 
   try {
-    const found = await page.evaluate(dominantColours, samples);
+    const found = await page.evaluate(sampleImages, { items: samples, mode });
     return new Map(Object.entries(found));
   } catch {
     return new Map();
@@ -415,12 +440,17 @@ function collectMediaUrls(): string[] {
 }
 
 /**
- * In-page helper: decodes each image into a small canvas and returns the most
- * frequent colour bucket. Named separately so Playwright can serialize it.
+ * In-page helper: decodes each image into a small canvas, returns the most
+ * frequent colour bucket for the whole image and, in mosaic mode, a PNG grid
+ * whose long edge is 16 cells. Named separately so Playwright can serialize it.
  */
-async function dominantColours(
-  items: Array<{ key: string; dataUrl: string }>,
-): Promise<Record<string, string>> {
+async function sampleImages({
+  items,
+  mode,
+}: {
+  items: Array<{ key: string; dataUrl: string }>;
+  mode: ImageMode;
+}): Promise<Record<string, ImageAsset>> {
   const load = (src: string): Promise<HTMLImageElement | null> =>
     new Promise((resolve) => {
       const image = new Image();
@@ -430,7 +460,111 @@ async function dominantColours(
     });
   const hex = (value: number): string =>
     Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0');
-  const out: Record<string, string> = {};
+  const bucketOf = (r: number, g: number, b: number): number =>
+    ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+  const out: Record<string, ImageAsset> = {};
+
+  const dominantColour = (pixels: Uint8ClampedArray): string | null => {
+    const buckets = new Map<number, { count: number; r: number; g: number; b: number }>();
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i + 3]! < 128) continue;
+      const r = pixels[i]!;
+      const g = pixels[i + 1]!;
+      const b = pixels[i + 2]!;
+      const bucket = bucketOf(r, g, b);
+      const entry = buckets.get(bucket);
+      if (entry) {
+        entry.count += 1;
+        entry.r += r;
+        entry.g += g;
+        entry.b += b;
+      } else {
+        buckets.set(bucket, { count: 1, r, g, b });
+      }
+    }
+
+    let best: { count: number; r: number; g: number; b: number } | null = null;
+    for (const entry of buckets.values()) {
+      if (!best || entry.count > best.count) best = entry;
+    }
+    if (!best) return null;
+    return `${hex(best.r / best.count)}${hex(best.g / best.count)}${hex(best.b / best.count)}`;
+  };
+
+  const buildMosaic = (image: HTMLImageElement): MosaicAsset | null => {
+    const naturalWidth = image.naturalWidth || image.width;
+    const naturalHeight = image.naturalHeight || image.height;
+    if (!naturalWidth || !naturalHeight) return null;
+
+    // 16 cells on the long edge, proportionally fewer on the short one, so
+    // cells stay roughly square before the grid is stretched to the box.
+    const longEdge = 16;
+    const perCell = 10;
+    const ratio =
+      Math.min(naturalWidth, naturalHeight) / Math.max(naturalWidth, naturalHeight);
+    const shortEdge = Math.max(1, Math.round(longEdge * ratio));
+    const wide = naturalWidth >= naturalHeight;
+    const gridWidth = wide ? longEdge : shortEdge;
+    const gridHeight = wide ? shortEdge : longEdge;
+
+    const scratchWidth = gridWidth * perCell;
+    const scratchHeight = gridHeight * perCell;
+    const scratch = document.createElement('canvas');
+    scratch.width = scratchWidth;
+    scratch.height = scratchHeight;
+    const scratchCtx = scratch.getContext('2d', { willReadFrequently: true });
+    if (!scratchCtx) return null;
+    scratchCtx.drawImage(image, 0, 0, scratchWidth, scratchHeight);
+    const pixels = scratchCtx.getImageData(0, 0, scratchWidth, scratchHeight).data;
+
+    const target = document.createElement('canvas');
+    target.width = gridWidth;
+    target.height = gridHeight;
+    const ctx = target.getContext('2d');
+    if (!ctx) return null;
+    const grid = ctx.createImageData(gridWidth, gridHeight);
+
+    for (let cy = 0; cy < gridHeight; cy += 1) {
+      for (let cx = 0; cx < gridWidth; cx += 1) {
+        const buckets = new Map<number, { count: number; r: number; g: number; b: number }>();
+        for (let sy = 0; sy < perCell; sy += 1) {
+          const y = cy * perCell + sy;
+          for (let sx = 0; sx < perCell; sx += 1) {
+            const x = cx * perCell + sx;
+            const i = (y * scratchWidth + x) * 4;
+            if (pixels[i + 3]! < 128) continue;
+            const r = pixels[i]!;
+            const g = pixels[i + 1]!;
+            const b = pixels[i + 2]!;
+            const bucket = bucketOf(r, g, b);
+            const entry = buckets.get(bucket);
+            if (entry) {
+              entry.count += 1;
+              entry.r += r;
+              entry.g += g;
+              entry.b += b;
+            } else {
+              buckets.set(bucket, { count: 1, r, g, b });
+            }
+          }
+        }
+
+        let best: { count: number; r: number; g: number; b: number } | null = null;
+        for (const entry of buckets.values()) {
+          if (!best || entry.count > best.count) best = entry;
+        }
+        if (!best) continue; // fully transparent cell stays transparent
+        const offset = (cy * gridWidth + cx) * 4;
+        grid.data[offset] = Math.round(best.r / best.count);
+        grid.data[offset + 1] = Math.round(best.g / best.count);
+        grid.data[offset + 2] = Math.round(best.b / best.count);
+        grid.data[offset + 3] = 255;
+      }
+    }
+
+    ctx.putImageData(grid, 0, 0);
+    return { uri: target.toDataURL('image/png'), width: gridWidth, height: gridHeight };
+  };
 
   const sampleOne = async ({ key, dataUrl }: { key: string; dataUrl: string }): Promise<void> => {
     const image = await load(dataUrl);
@@ -445,31 +579,10 @@ async function dominantColours(
       ctx.drawImage(image, 0, 0, size, size);
       const pixels = ctx.getImageData(0, 0, size, size).data;
 
-      const buckets = new Map<number, { count: number; r: number; g: number; b: number }>();
-      for (let i = 0; i < pixels.length; i += 4) {
-        if (pixels[i + 3]! < 128) continue;
-        const r = pixels[i]!;
-        const g = pixels[i + 1]!;
-        const b = pixels[i + 2]!;
-        const bucket = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
-        const entry = buckets.get(bucket);
-        if (entry) {
-          entry.count += 1;
-          entry.r += r;
-          entry.g += g;
-          entry.b += b;
-        } else {
-          buckets.set(bucket, { count: 1, r, g, b });
-        }
-      }
-
-      let best: { count: number; r: number; g: number; b: number } | null = null;
-      for (const entry of buckets.values()) {
-        if (!best || entry.count > best.count) best = entry;
-      }
-      if (!best) return;
-      out[key] =
-        `${hex(best.r / best.count)}${hex(best.g / best.count)}${hex(best.b / best.count)}`;
+      const colour = dominantColour(pixels);
+      if (!colour) return;
+      const mosaic = mode === 'mosaic' ? buildMosaic(image) : null;
+      out[key] = mosaic ? { colour, mosaic } : { colour };
     } catch {
       /* undecodable or tainted */
     }
@@ -520,11 +633,11 @@ function finishSheet(
  */
 function cloneDocument({
   seed,
-  colours,
+  assets,
   keepAttrs,
 }: {
   seed: number;
-  colours: Record<string, string>;
+  assets: Record<string, ImageAsset>;
   keepAttrs: string[];
 }) {
   const WORDS = [
@@ -575,8 +688,10 @@ function cloneDocument({
     return `${(hash >>> 0).toString(36)}-${url.length.toString(36)}`;
   };
 
-  const colourFor = (url: string): string | undefined =>
-    colours[urlKey(absolute(url))] ?? colours[urlKey(url)];
+  const assetFor = (url: string): ImageAsset | undefined =>
+    assets[urlKey(absolute(url))] ?? assets[urlKey(url)];
+
+  const colourFor = (url: string): string | undefined => assetFor(url)?.colour;
 
   const placeholderUrl = (
     width: number,
@@ -653,6 +768,7 @@ function cloneDocument({
 
     let placeholderSize: { width: number; height: number } | null = null;
     let placeholderColour: string | undefined;
+    let imageSource: string | undefined;
 
     if (MEDIA.has(tag)) {
       const style = getComputedStyle(original);
@@ -677,6 +793,7 @@ function cloneDocument({
             ? { width: attrWidth, height: attrHeight }
             : { width, height };
         const source = image.currentSrc || image.src || image.getAttribute('src') || '';
+        imageSource = source;
         placeholderColour = source ? colourFor(source) : undefined;
       } else {
         // Video, iframe, canvas, svg and friends cannot load a placehold.co
@@ -727,10 +844,16 @@ function cloneDocument({
     }
 
     if (placeholderSize) {
-      copy.setAttribute(
-        'src',
-        placeholderUrl(placeholderSize.width, placeholderSize.height, placeholderColour),
-      );
+      const asset = imageSource ? assetFor(imageSource) : undefined;
+      if (asset?.mosaic) {
+        copy.setAttribute('src', asset.mosaic.uri);
+        copy.setAttribute('data-mosaic', `${asset.mosaic.width}x${asset.mosaic.height}`);
+      } else {
+        copy.setAttribute(
+          'src',
+          placeholderUrl(placeholderSize.width, placeholderSize.height, placeholderColour),
+        );
+      }
       copy.setAttribute('width', String(Math.max(1, Math.round(placeholderSize.width))));
       copy.setAttribute('height', String(Math.max(1, Math.round(placeholderSize.height))));
       copy.setAttribute('alt', '');
@@ -781,8 +904,17 @@ function cloneDocument({
 
 type ClonedBody = Awaited<ReturnType<typeof cloneDocument>>;
 
-function assemble(css: string, body: ClonedBody, title: string): string {
-  const safeCss = css.replace(/<\/style/gi, '<\\/style');
+function assemble(
+  css: string,
+  body: ClonedBody,
+  title: string,
+  images: ImageMode,
+): string {
+  // The mosaics are 16-cell PNGs; without this the browser smooths them into
+  // gradients instead of showing the grid. Every raster image in the output is
+  // either a mosaic or a flat colour block, so scoping to img is safe.
+  const mosaicRule = images === 'mosaic' ? '\nimg{image-rendering:pixelated !important}' : '';
+  const safeCss = (css + mosaicRule).replace(/<\/style/gi, '<\\/style');
   const htmlAttrs = [
     `lang="${escapeAttr(body.lang || 'en')}"`,
     body.htmlClass ? `class="${escapeAttr(body.htmlClass)}"` : '',
