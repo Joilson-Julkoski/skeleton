@@ -12,7 +12,8 @@
     "dev": "npm run build && node dist/cli.js",
     "start": "node dist/cli.js",
     "test": "npm run build && node test/mosaic.mjs",
-    "examples": "npm run build && OUT_DIR=out/tests node test/suite.mjs",
+    "landing": "node site/build.mjs",
+    "examples": "npm run build && OUT_DIR=out/tests node test/suite.mjs && npm run landing",
     "examples:mosaic": "npm run build && OUT_DIR=out/mosaic IMAGE_MODE=mosaic node test/suite.mjs"
   },
   "dependencies": {

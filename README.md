@@ -191,19 +191,66 @@ Clones land in `out/tests/<slug>.html` (solid) and `out/mosaic/<slug>.html`
 Open one directly in a browser; solid clones load images from `placehold.co`,
 mosaic clones embed them, and both load webfonts from the original site.
 
-Every push to `main` that touches `src/`, `test/` or the package files
-regenerates the clones and publishes them to GitHub Pages:
+The examples index is the static page in `site/index.html`; `npm run examples`
+copies it to `out/index.html` (or run `npm run landing` on its own). The landing
+page is published at the site root, <https://copiamasnaofazigual.com.br/>.
 
-- https://joilson-julkoski.github.io/skeleton/tests/wikipedia.html
-- https://joilson-julkoski.github.io/skeleton/tests/hackernews.html
-- https://joilson-julkoski.github.io/skeleton/tests/bbc.html
-- https://joilson-julkoski.github.io/skeleton/tests/github.html
-- https://joilson-julkoski.github.io/skeleton/tests/apple.html
-- https://joilson-julkoski.github.io/skeleton/mosaic/wikipedia.html
-- https://joilson-julkoski.github.io/skeleton/mosaic/hackernews.html
-- https://joilson-julkoski.github.io/skeleton/mosaic/bbc.html
-- https://joilson-julkoski.github.io/skeleton/mosaic/github.html
-- https://joilson-julkoski.github.io/skeleton/mosaic/apple.html
+Every push to `main` that touches `src/`, `test/`, `site/` or the package files
+regenerates the clones and publishes them to GitHub Pages at
+<https://copiamasnaofazigual.com.br>:
+
+- https://copiamasnaofazigual.com.br/tests/wikipedia.html
+- https://copiamasnaofazigual.com.br/tests/hackernews.html
+- https://copiamasnaofazigual.com.br/tests/bbc.html
+- https://copiamasnaofazigual.com.br/tests/github.html
+- https://copiamasnaofazigual.com.br/tests/apple.html
+- https://copiamasnaofazigual.com.br/mosaic/wikipedia.html
+- https://copiamasnaofazigual.com.br/mosaic/hackernews.html
+- https://copiamasnaofazigual.com.br/mosaic/bbc.html
+- https://copiamasnaofazigual.com.br/mosaic/github.html
+- https://copiamasnaofazigual.com.br/mosaic/apple.html
+
+### Custom domain
+
+The custom domain is configured in the repository's Pages settings; with an
+Actions-based publishing workflow no `CNAME` file is needed (GitHub ignores one
+if present). The current configuration can be checked or restored with:
+
+```bash
+gh api repos/Joilson-Julkoski/skeleton/pages
+gh api --method PUT repos/Joilson-Julkoski/skeleton/pages \
+  --field cname=copiamasnaofazigual.com.br \
+  --field https_enforced=true
+```
+
+The domain is registered at Registro.br but its nameservers currently point to
+GoDaddy (`ns31.domaincontrol.com` and `ns32.domaincontrol.com`), so the DNS zone
+lives in GoDaddy. (If you prefer Registro.br's DNS, change the nameservers at
+Registro.br first; that replaces the GoDaddy zone.)
+
+The zone currently has the required records:
+
+| Type | Name | Value |
+|---|---|---|
+| A | `@` (empty) | `185.199.108.153` |
+| A | `@` (empty) | `185.199.109.153` |
+| A | `@` (empty) | `185.199.110.153` |
+| A | `@` (empty) | `185.199.111.153` |
+| CNAME | `www` | `joilson-julkoski.github.io` |
+
+If you ever need to recreate them, delete any parking records (`15.197.148.33`
+and `3.33.130.190`) and the `www` CNAME pointing at the apex first. Leave
+unrelated records (email, verification TXT, DMARC) alone. The certificate is
+issued by GitHub; once it is approved, enable **Enforce HTTPS**.
+
+Optional IPv6 records for the apex, if your DNS provider supports them:
+
+| Type | Name | Value |
+|---|---|---|
+| AAAA | `@` (empty) | `2606:50c0:8000::153` |
+| AAAA | `@` (empty) | `2606:50c0:8001::153` |
+| AAAA | `@` (empty) | `2606:50c0:8002::153` |
+| AAAA | `@` (empty) | `2606:50c0:8003::153` |
 
 `test/clone-poc.mjs` is the exploratory script that led to clone mode; it
 generates the three-way comparison in `/poc/`. Superseded by `src/clone.ts`.

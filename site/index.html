@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cópia, mas não faz igual — exemplos de layouts clonados</title>
+<meta name="description" content="Layouts reais capturados no Chromium, com todo o conteúdo trocado por lorem ipsum e imagens por placeholders.">
+<meta name="theme-color" content="#0b0b0c">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23d7ff3f'/%3E%3C/svg%3E">
+<meta property="og:title" content="Cópia, mas não faz igual">
+<meta property="og:description" content="Layouts reais, conteúdo genérico. Exemplos de páginas clonadas com Playwright e Chromium.">
+<meta property="og:type" content="website">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0b0c;
+    --panel: #141416;
+    --panel-hover: #1b1b1e;
+    --line: #2a2a2e;
+    --text: #f4f4ef;
+    --muted: #9a9aa3;
+    --accent: #d7ff3f;
+    --accent-ink: #10120a;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background:
+      radial-gradient(900px 520px at 82% -10%, rgba(215, 255, 63, .13), transparent 65%),
+      radial-gradient(700px 420px at 8% 18%, rgba(108, 122, 255, .10), transparent 70%),
+      var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; }
+
+  .shell {
+    width: min(1120px, calc(100% - 40px));
+    margin: 0 auto;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 28px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text);
+    text-decoration: none;
+    font-weight: 700;
+    letter-spacing: -.02em;
+  }
+
+  .brand-mark {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: -.08em;
+  }
+
+  .brand small {
+    display: block;
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+  }
+
+  nav {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    font-size: 14px;
+  }
+
+  nav a {
+    color: var(--muted);
+    text-decoration: none;
+  }
+
+  nav a:hover { color: var(--text); }
+
+  .hero {
+    padding: 96px 0 72px;
+    max-width: 900px;
+  }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0 0 26px;
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+
+  .eyebrow::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 5px rgba(215, 255, 63, .10);
+  }
+
+  h1 {
+    margin: 0;
+    max-width: 840px;
+    font-size: clamp(46px, 8vw, 92px);
+    line-height: .96;
+    letter-spacing: -.055em;
+    font-weight: 760;
+    text-wrap: balance;
+  }
+
+  h1 em {
+    font-style: normal;
+    color: var(--accent);
+  }
+
+  .lede {
+    margin: 30px 0 0;
+    max-width: 680px;
+    color: var(--muted);
+    font-size: clamp(16px, 2vw, 19px);
+  }
+
+  .lede strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-top: 38px;
+  }
+
+  .button {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 0 20px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background .18s ease, border-color .18s ease, transform .18s ease;
+  }
+
+  .button:hover {
+    background: var(--panel-hover);
+    border-color: #3a3a40;
+    transform: translateY(-1px);
+  }
+
+  .button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+  }
+
+  .button.primary:hover { background: #e3ff70; }
+
+  .button svg { width: 16px; height: 16px; }
+
+  .terminal {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 56px;
+    padding: 15px 18px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(20, 20, 22, .72);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 13px;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .terminal .prompt { color: var(--accent); user-select: none; }
+  .terminal .arg { color: var(--text); }
+
+  section.examples {
+    padding: 24px 0 88px;
+    scroll-margin-top: 24px;
+  }
+
+  .section-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 28px;
+  }
+
+  h2 {
+    margin: 0;
+    font-size: clamp(26px, 4vw, 40px);
+    line-height: 1.05;
+    letter-spacing: -.04em;
+  }
+
+  .section-head p {
+    margin: 0;
+    max-width: 390px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 14px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .grid > li {
+    grid-column: span 4;
+    min-width: 0;
+  }
+
+  .grid > li:nth-child(1),
+  .grid > li:nth-child(2) { grid-column: span 6; }
+
+  .card {
+    height: 100%;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 218px;
+    padding: 24px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .025), transparent 55%), var(--panel);
+    text-decoration: none;
+    overflow: hidden;
+    transition: background .2s ease, border-color .2s ease, transform .2s ease;
+  }
+
+  .card:hover {
+    background: var(--panel-hover);
+    border-color: #404047;
+    transform: translateY(-3px);
+  }
+
+  .card:focus-visible,
+  .button:focus-visible,
+  a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+
+  .card-number {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .1em;
+  }
+
+  .card h3 {
+    margin: 34px 0 8px;
+    font-size: 24px;
+    letter-spacing: -.035em;
+  }
+
+  .card p {
+    margin: 0;
+    max-width: 38ch;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .card-tag {
+    margin-top: auto;
+    padding-top: 24px;
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .card-arrow {
+    position: absolute;
+    top: 22px;
+    right: 22px;
+    color: var(--muted);
+    font-size: 20px;
+    transition: color .18s ease, transform .18s ease;
+  }
+
+  .card:hover .card-arrow {
+    color: var(--accent);
+    transform: translate(2px, -2px);
+  }
+
+  .mosaic-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    margin: 22px 0 0;
+    padding: 14px 18px;
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .mosaic-strip > span {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .mosaic-strip a {
+    color: var(--text);
+    text-decoration: none;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .mosaic-strip a:hover { border-color: var(--accent); }
+
+  footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 28px 0 44px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  footer a {
+    color: var(--text);
+    text-decoration: none;
+    border-bottom: 1px solid var(--line);
+  }
+
+  footer a:hover { border-color: var(--accent); }
+
+  @media (max-width: 820px) {
+    nav .hide-mobile { display: none; }
+    .hero { padding: 72px 0 56px; }
+    .grid > li,
+    .grid > li:nth-child(1),
+    .grid > li:nth-child(2) { grid-column: span 6; }
+    .section-head { align-items: flex-start; flex-direction: column; }
+  }
+
+  @media (max-width: 600px) {
+    .shell { width: min(100% - 28px, 1120px); }
+    header { padding: 20px 0; }
+    .hero { padding: 58px 0 44px; }
+    .grid > li,
+    .grid > li:nth-child(1),
+    .grid > li:nth-child(2) { grid-column: span 12; }
+    .terminal { font-size: 11px; }
+    footer { flex-direction: column; gap: 10px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <a class="brand" href="./">
+        <span class="brand-mark" aria-hidden="true">&lt;/&gt;</span>
+        <span>copia<small>mas não faz igual</small></span>
+      </a>
+      <nav aria-label="Navegação principal">
+        <a class="hide-mobile" href="#exemplos">Exemplos</a>
+        <a href="https://github.com/Joilson-Julkoski/skeleton">GitHub ↗</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="eyebrow">skeleton · clone de layout</p>
+        <h1>Copiamos o layout. <em>Não o conteúdo.</em></h1>
+        <p class="lede">
+          O <strong>skeleton</strong> abre uma página no Chromium, preserva o DOM e o CSS
+          renderizados e troca todo o texto por lorem ipsum e as imagens por
+          placeholders. A estrutura continua igual; a informação, não.
+        </p>
+
+        <div class="actions">
+          <a class="button primary" href="#exemplos">
+            Ver exemplos
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+          </a>
+          <a class="button" href="https://github.com/Joilson-Julkoski/skeleton">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.7 7.7 0 0 1 8 3.86c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+            Código no GitHub
+          </a>
+        </div>
+
+        <div class="terminal" aria-label="Exemplo de comando">
+          <span class="prompt">$</span>
+          <span>skeleton <span class="arg">https://example.com</span> -o out/page.html</span>
+        </div>
+      </section>
+
+      <section class="examples" id="exemplos">
+        <div class="section-head">
+          <h2>Páginas clonadas</h2>
+          <p>
+            Cada arquivo foi capturado em um viewport de 1440×900. Abra em tela
+            cheia e compare com o original.
+          </p>
+        </div>
+
+        <ul class="grid">
+          <li>
+            <a class="card" href="tests/wikipedia.html">
+              <span class="card-number">01 / enciclopédia</span>
+              <span class="card-arrow" aria-hidden="true">↗</span>
+              <h3>Wikipedia</h3>
+              <p>Layout denso, tipografia editorial e uma quantidade absurda de links.</p>
+              <span class="card-tag">ver clone</span>
+            </a>
+          </li>
+          <li>
+            <a class="card" href="tests/hackernews.html">
+              <span class="card-number">02 / fórum</span>
+              <span class="card-arrow" aria-hidden="true">↗</span>
+              <h3>Hacker News</h3>
+              <p>O minimalismo como identidade: tabelas, links e quase nenhum CSS.</p>
+              <span class="card-tag">ver clone</span>
+            </a>
+          </li>
+          <li>
+            <a class="card" href="tests/bbc.html">
+              <span class="card-number">03 / notícias</span>
+              <span class="card-arrow" aria-hidden="true">↗</span>
+              <h3>BBC</h3>
+              <p>Portal de notícias com grades, destaques e hierarquia visual pesada.</p>
+              <span class="card-tag">ver clone</span>
+            </a>
+          </li>
+          <li>
+            <a class="card" href="tests/github.html">
+              <span class="card-number">04 / código</span>
+              <span class="card-arrow" aria-hidden="true">↗</span>
+              <h3>GitHub</h3>
+              <p>Dashboard de código com navegação, painéis e componentes densos.</p>
+              <span class="card-tag">ver clone</span>
+            </a>
+          </li>
+          <li>
+            <a class="card" href="tests/apple.html">
+              <span class="card-number">05 / produto</span>
+              <span class="card-arrow" aria-hidden="true">↗</span>
+              <h3>Apple</h3>
+              <p>Hero de produto, tipografia grande e muito espaço em branco.</p>
+              <span class="card-tag">ver clone</span>
+            </a>
+          </li>
+        </ul>
+
+        <p class="mosaic-strip">
+          <span>Variante mosaico</span>
+          <a href="mosaic/wikipedia.html">Wikipedia</a>
+          <a href="mosaic/hackernews.html">Hacker News</a>
+          <a href="mosaic/bbc.html">BBC</a>
+          <a href="mosaic/github.html">GitHub</a>
+          <a href="mosaic/apple.html">Apple</a>
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <span>Layout copiado. Conteúdo genérico. Imagens substituídas.</span>
+      <span>Feito com Playwright + Chromium · <a href="https://github.com/Joilson-Julkoski/skeleton">código-fonte</a></span>
+    </footer>
+  </div>
+</body>
+</html>
