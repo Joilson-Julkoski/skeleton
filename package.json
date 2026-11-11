@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "npm run build && node dist/cli.js",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "examples": "npm run build && OUT_DIR=out/tests node test/suite.mjs"
   },
   "dependencies": {
     "playwright": "1.49.1"

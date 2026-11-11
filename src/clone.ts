@@ -35,6 +35,9 @@ export async function clonePage(options: CloneOptions): Promise<CloneResult> {
   const timeout = options.timeoutMs ?? 60_000;
   const browser = await chromium.launch({
     headless: true,
+    // Use the full Chromium build rather than the headless shell: the shell
+    // segfaults on some newer distros (e.g. Debian trixie).
+    channel: 'chromium',
     args: ['--no-sandbox', '--disable-dev-shm-usage', '--force-device-scale-factor=1'],
   });
 

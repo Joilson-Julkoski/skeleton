@@ -148,12 +148,10 @@ If anonymization is the requirement, the middle ground is to emit *computed*
 styles per element instead of the original stylesheet — same fidelity, no
 borrowed CSS. See `TODO.md`.
 
-## Test suite
+## Examples
 
-`test/suite.mjs` captures a matrix of representative pages, emits placeholder
-clones, and writes a side-by-side screenshot comparison. It reports size, element
-count and capture time; media pixels are placeholders by design, so it no longer
-scores fidelity against the original.
+`test/suite.mjs` captures a matrix of representative pages and writes one
+placeholder clone per site — nothing else (no screenshots, no report, no JSON).
 
 ```bash
 docker run --rm --ipc=host \
@@ -163,11 +161,25 @@ docker run --rm --ipc=host \
   --entrypoint node skeleton /app/test/suite.mjs
 ```
 
-Then serve `out/` and open `/sites/`:
+Or locally:
 
 ```bash
-python3 -m http.server 8000 --directory out
+npm run examples
 ```
+
+Clones land in `out/tests/<slug>.html` (the Docker run writes to the same path
+inside the mounted `out/`). Open one directly in a browser; images load from
+`placehold.co` and webfonts from the original site, so the file needs network
+access.
+
+Every push to `main` that touches `src/`, `test/` or the package files
+regenerates the clones and publishes them to GitHub Pages:
+
+- https://joilson-julkoski.github.io/skeleton/tests/wikipedia.html
+- https://joilson-julkoski.github.io/skeleton/tests/hackernews.html
+- https://joilson-julkoski.github.io/skeleton/tests/bbc.html
+- https://joilson-julkoski.github.io/skeleton/tests/github.html
+- https://joilson-julkoski.github.io/skeleton/tests/apple.html
 
 `test/clone-poc.mjs` is the exploratory script that led to clone mode; it
 generates the three-way comparison in `/poc/`. Superseded by `src/clone.ts`.
