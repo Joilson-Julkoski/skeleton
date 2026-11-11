@@ -16,6 +16,11 @@ export interface CloneOptions {
    * 16-cell pixel grid of the original (`mosaic`). Defaults to `mosaic`.
    */
   images?: ImageMode;
+  /**
+   * Rename class names and ids to generic `c1`/`i1`-style names and drop CSS
+   * rules that no longer match the cloned DOM. Defaults to true.
+   */
+  anonymize?: boolean;
   /** Also return a PNG of the original page at the captured viewport. */
   screenshot?: boolean;
   timeoutMs?: number;
@@ -91,14 +96,40 @@ export async function clonePage(options: CloneOptions): Promise<CloneResult> {
     const mode = options.images ?? 'mosaic';
     const assets = await detectImageAssets(page, context, stylesheets, timeout, mode);
     const keepAttrs = cssAttributeNames(stylesheets);
-
-    const css = renderCss(stylesheets, assets, mode);
+    const anonymize = options.anonymize ?? true;
 
     const body = await page.evaluate(cloneDocument, {
       seed: options.seed,
       assets: Object.fromEntries(assets),
       keepAttrs,
+      anonymize,
     });
+
+    // Rename selectors to match the cloned DOM and drop rules that no longer
+    // match anything. This runs after cloning because the clone is the DOM we
+    // test selectors against.
+    let sheetTexts = stylesheets.map((sheet) => sheet.text);
+    if (anonymize) {
+      sheetTexts = await page.evaluate(rewriteCssForClone, {
+        sheets: sheetTexts,
+        bodyHtml: body.html,
+        htmlAttrs: {
+          className: body.htmlClass,
+          style: body.htmlStyle,
+          lang: body.lang,
+          dir: body.dir,
+        },
+        bodyAttrs: {
+          id: body.idAttr,
+          className: body.classAttr,
+          style: body.styleAttr,
+        },
+        classes: body.classes,
+        ids: body.ids,
+      });
+    }
+
+    const css = renderCss(stylesheets, sheetTexts, assets, mode);
 
     return {
       html: assemble(css, body, options.title, mode),
@@ -607,13 +638,16 @@ async function sampleImages({
  */
 function renderCss(
   sheets: StyleSheetSource[],
+  texts: string[],
   assets: Map<string, ImageAsset>,
   mode: ImageMode,
 ): string {
   const chunks: string[] = [];
-  for (const sheet of sheets) {
-    if (!sheet.text.trim()) continue;
-    chunks.push(finishSheet(sheet.text, sheet.media, sheet.base, assets, mode));
+  for (let index = 0; index < sheets.length; index += 1) {
+    const sheet = sheets[index]!;
+    const text = texts[index] ?? sheet.text;
+    if (!text.trim()) continue;
+    chunks.push(finishSheet(text, sheet.media, sheet.base, assets, mode));
   }
   return chunks.join('\n');
 }
@@ -638,10 +672,12 @@ function cloneDocument({
   seed,
   assets,
   keepAttrs,
+  anonymize,
 }: {
   seed: number;
   assets: Record<string, ImageAsset>;
   keepAttrs: string[];
+  anonymize: boolean;
 }) {
   const WORDS = [
     'lorem', 'ipsum', 'dolor', 'sit', 'amet', 'consectetur', 'adipiscing', 'elit',
@@ -748,9 +784,64 @@ function cloneDocument({
     return holder;
   };
 
+  // Generic names are assigned in document order so the output is stable for
+  // the same page and seed. Mapping is collected before media/script nodes are
+  // dropped; any class/id that ends up unused has its CSS pruned later.
+  const classes: Record<string, string> = {};
+  const ids: Record<string, string> = {};
+  if (anonymize) {
+    let classIndex = 0;
+    let idIndex = 0;
+    const elements = [
+      document.documentElement,
+      document.body,
+      ...Array.from(document.body.querySelectorAll('*')),
+    ];
+    for (const element of elements) {
+      for (const token of (element.getAttribute('class') ?? '').split(/\s+/)) {
+        if (token && !classes[token]) classes[token] = `c${(classIndex += 1)}`;
+      }
+      const id = element.getAttribute('id');
+      if (id && !ids[id]) ids[id] = `i${(idIndex += 1)}`;
+    }
+  }
+
+  const renameClasses = (value: string): string =>
+    anonymize
+      ? value
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((token) => classes[token] ?? token)
+          .join(' ')
+      : value;
+
+  const renameId = (value: string): string => ids[value] ?? value;
+
+  const rewriteIdUrls = (value: string): string =>
+    value.replace(
+      /url\(\s*(['"]?)#([^'")]+)\1\s*\)/gi,
+      (match, quote: string, id: string) =>
+        ids[id] ? `url(${quote}#${ids[id]}${quote})` : match,
+    );
+
+  const REF_ATTRS = new Set([
+    'for', 'list', 'form', 'headers', 'itemref',
+    'aria-activedescendant', 'aria-controls', 'aria-describedby', 'aria-details',
+    'aria-errormessage', 'aria-flowto', 'aria-labelledby', 'aria-owns',
+  ]);
+
   const clone = document.body.cloneNode(true) as HTMLElement;
   const originals = Array.from(document.body.querySelectorAll('*'));
   const copies = Array.from(clone.querySelectorAll('*'));
+
+  // Rename inside the clone so the live DOM (source for computed styles and
+  // image sampling) is left untouched.
+  for (const element of Array.from(clone.querySelectorAll('*'))) {
+    const className = element.getAttribute('class');
+    if (className !== null) element.setAttribute('class', renameClasses(className));
+    const id = element.getAttribute('id');
+    if (id !== null) element.setAttribute('id', renameId(id));
+  }
 
   const MEDIA = new Set([
     'IMG', 'VIDEO', 'AUDIO', 'CANVAS', 'IFRAME', 'SVG', 'OBJECT',
@@ -761,7 +852,7 @@ function cloneDocument({
   ]);
   const STRIP_ATTRS = new Set([
     'href', 'src', 'srcset', 'alt', 'title', 'value', 'placeholder', 'poster',
-    'content', 'formaction', 'download', 'target', 'rel', 'ping', 'sizes',
+    'content', 'formaction', 'download', 'target', 'rel', 'ping', 'sizes', 'usemap',
   ]);
   const KEEP_ATTRS = new Set(keepAttrs);
 
@@ -845,7 +936,10 @@ function cloneDocument({
       const name = attribute.name.toLowerCase();
 
       if (name === 'style') {
-        copy.setAttribute('style', placeholderImages(attribute.value));
+        copy.setAttribute(
+          'style',
+          rewriteIdUrls(placeholderImages(attribute.value)),
+        );
         continue;
       }
 
@@ -853,7 +947,15 @@ function cloneDocument({
         (name.startsWith('data-') || name.startsWith('aria-')) && !KEEP_ATTRS.has(name);
       if (STRIP_ATTRS.has(name) || name.startsWith('on') || stripScoped) {
         copy.removeAttribute(attribute.name);
+        continue;
       }
+
+      let value = attribute.value;
+      if (REF_ATTRS.has(name)) {
+        value = value.split(/\s+/).map(renameId).join(' ');
+      }
+      value = rewriteIdUrls(value);
+      if (value !== attribute.value) copy.setAttribute(attribute.name, value);
     }
 
     if (placeholderSize) {
@@ -903,16 +1005,274 @@ function cloneDocument({
 
   return {
     html: clone.innerHTML,
-    classAttr: document.body.getAttribute('class') ?? '',
-    styleAttr: document.body.getAttribute('style') ?? '',
-    idAttr: document.body.getAttribute('id') ?? '',
-    htmlClass: document.documentElement.getAttribute('class') ?? '',
-    htmlStyle: document.documentElement.getAttribute('style') ?? '',
+    classAttr: renameClasses(document.body.getAttribute('class') ?? ''),
+    styleAttr: rewriteIdUrls(document.body.getAttribute('style') ?? ''),
+    idAttr: renameId(document.body.getAttribute('id') ?? ''),
+    htmlClass: renameClasses(document.documentElement.getAttribute('class') ?? ''),
+    htmlStyle: rewriteIdUrls(document.documentElement.getAttribute('style') ?? ''),
     lang: document.documentElement.getAttribute('lang') ?? 'en',
     dir: document.documentElement.getAttribute('dir') ?? '',
     elementCount: clone.querySelectorAll('*').length,
     pageTitle: document.title,
+    classes,
+    ids,
   };
+}
+
+/**
+ * In-page helper: rewrite every selector that refers to a renamed class/id and
+ * drop style rules that cannot match the cloned document. Rules are tested
+ * against a throwaway document built from the clone, so `html`/`body`/`:root`
+ * selectors keep working.
+ *
+ * Dynamic pseudo-classes (`:hover`, `:focus`, …) and pseudo-elements never
+ * match a static query and are stripped before testing; the rules themselves
+ * are kept so interactivity survives.
+ */
+function rewriteCssForClone({
+  sheets,
+  bodyHtml,
+  htmlAttrs,
+  bodyAttrs,
+  classes,
+  ids,
+}: {
+  sheets: string[];
+  bodyHtml: string;
+  htmlAttrs: { className: string; style: string; lang: string; dir: string };
+  bodyAttrs: { id: string; className: string; style: string };
+  classes: Record<string, string>;
+  ids: Record<string, string>;
+}): string[] {
+  const doc = document.implementation.createHTMLDocument('');
+  const root = doc.documentElement;
+  if (htmlAttrs.className) root.setAttribute('class', htmlAttrs.className);
+  if (htmlAttrs.style) root.setAttribute('style', htmlAttrs.style);
+  if (htmlAttrs.lang) root.setAttribute('lang', htmlAttrs.lang);
+  if (htmlAttrs.dir) root.setAttribute('dir', htmlAttrs.dir);
+  if (bodyAttrs.id) doc.body.setAttribute('id', bodyAttrs.id);
+  if (bodyAttrs.className) doc.body.setAttribute('class', bodyAttrs.className);
+  if (bodyAttrs.style) doc.body.setAttribute('style', bodyAttrs.style);
+  doc.body.innerHTML = bodyHtml;
+
+  const decodeIdent = (value: string): string => {
+    let out = '';
+    for (let index = 0; index < value.length; index += 1) {
+      const character = value[index]!;
+      if (character !== '\\') {
+        out += character;
+        continue;
+      }
+      const next = value[index + 1];
+      if (next === undefined) break;
+      const hex = value.slice(index + 1).match(/^[0-9a-fA-F]{1,6}/);
+      if (hex) {
+        const code = Number.parseInt(hex[0], 16);
+        try {
+          out += String.fromCodePoint(code);
+        } catch {
+          out += '\ufffd';
+        }
+        index += hex[0].length;
+        if (/\s/.test(value[index + 1] ?? '')) index += 1;
+      } else {
+        out += next;
+        index += 1;
+      }
+    }
+    return out;
+  };
+
+  const ATTRIBUTE_SELECTOR =
+    /\[\s*([a-zA-Z_][\w-]*)\s*([~|^$*]?=)\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^\]\s]+))\s*\]/g;
+  const CLASS_OR_ID = /([.#])((?:\\[0-9a-fA-F]{1,6}\s?|\\[\s\S]|[-\w\u0080-\uffff])+)/g;
+  const QUOTED = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/;
+
+  // `:not(.missing)` is always true once `.missing` no longer exists in the
+  // clone, so remove those branches rather than leaking the old class name.
+  const simplifyNot = (selector: string): string => {
+    let result = selector;
+    for (let pass = 0; pass < 4; pass += 1) {
+      let changed = false;
+      result = result
+        .split(QUOTED)
+        .map((part, index) => {
+          if (index % 2 === 1) return part;
+          return part.replace(/:not\(([^()]*)\)/gi, (match, inner: string) => {
+            const branches = splitSelectorList(inner);
+            const kept = branches.filter((branch) => {
+              let unknown = false;
+              branch.replace(CLASS_OR_ID, (token, prefix: string, identifier: string) => {
+                const map = prefix === '.' ? classes : ids;
+                if (!map[decodeIdent(identifier)]) unknown = true;
+                return token;
+              });
+              return !unknown;
+            });
+            if (kept.length === branches.length) return match;
+            changed = true;
+            return kept.length === 0 ? '' : `:not(${kept.join(', ')})`;
+          });
+        })
+        .join('');
+      if (!changed) break;
+    }
+    return result;
+  };
+
+  const renameSelector = (selector: string): string => {
+    const attributes = simplifyNot(selector).replace(
+      ATTRIBUTE_SELECTOR,
+      (match, attribute: string, operator: string, double: string, single: string, bare: string) => {
+        const name = attribute.toLowerCase();
+        const map = name === 'class' ? classes : name === 'id' ? ids : null;
+        if (!map) return match;
+        const raw = double ?? single ?? bare ?? '';
+        const quote = double !== undefined ? '"' : single !== undefined ? "'" : '';
+        const value =
+          operator === '=' || operator === '~='
+            ? raw
+                .split(/(\s+)/)
+                .map((part, index) => (index % 2 === 1 ? part : map[part] ?? part))
+                .join('')
+            : map[raw] ?? raw;
+        return `[${attribute}${operator}${quote}${value}${quote}]`;
+      },
+    );
+
+    return attributes
+      .split(QUOTED)
+      .map((part, index) => {
+        if (index % 2 === 1) return part;
+        return part.replace(CLASS_OR_ID, (match, prefix: string, identifier: string) => {
+          const map = prefix === '.' ? classes : ids;
+          const decoded = decodeIdent(identifier);
+          return map[decoded] ? `${prefix}${map[decoded]}` : match;
+        });
+      })
+      .join('');
+  };
+
+  const cleanSelector = (selector: string): string =>
+    selector
+      .replace(/::[\w-]+(?:\([^)]*\))?/g, '')
+      .replace(
+        /:(?:hover|focus|focus-within|focus-visible|active|visited|target|target-within|checked|indeterminate|disabled|enabled|required|optional|valid|invalid|in-range|out-of-range|read-only|read-write|placeholder-shown|autofill|default|fullscreen|modal|popover-open|user-valid|user-invalid|playing|paused|seeking|buffering|stalled|muted|volume-locked)(?:\([^)]*\))?/gi,
+        '',
+      );
+
+  const selectorMatches = (selector: string): boolean => {
+    let parsed = false;
+    for (const candidate of [selector, cleanSelector(selector)]) {
+      if (!candidate.trim()) continue;
+      try {
+        parsed = true;
+        if (doc.querySelector(candidate)) return true;
+      } catch {
+        /* invalid for querySelector; try the next candidate */
+      }
+    }
+    // Unparseable selectors (vendor pseudo-classes, `&` nesting, …) are kept
+    // rather than risking the removal of something the browser still uses.
+    return !parsed;
+  };
+
+  // Split a selector list on commas that are not inside `:is(…)`, `[attr=…]`
+  // or a quoted string. Filtering each branch separately lets us drop
+  // `.unused` from `.used, .unused` instead of keeping the whole rule.
+  function splitSelectorList(selector: string): string[] {
+    const parts: string[] = [];
+    let start = 0;
+    let depth = 0;
+    let quote = '';
+    for (let index = 0; index < selector.length; index += 1) {
+      const character = selector[index]!;
+      if (quote) {
+        if (character === '\\') index += 1;
+        else if (character === quote) quote = '';
+        continue;
+      }
+      if (character === '"' || character === "'") quote = character;
+      else if (character === '(' || character === '[') depth += 1;
+      else if (character === ')' || character === ']') depth -= 1;
+      else if (character === ',' && depth === 0) {
+        parts.push(selector.slice(start, index).trim());
+        start = index + 1;
+      }
+    }
+    parts.push(selector.slice(start).trim());
+    return parts.filter(Boolean);
+  }
+
+  const rewriteIdUrls = (value: string): string =>
+    value.replace(
+      /url\(\s*(['"]?)#([^'")]+)\1\s*\)/gi,
+      (match, quote: string, id: string) =>
+        ids[id] ? `url(${quote}#${ids[id]}${quote})` : match,
+    );
+
+  const pruneRules = (
+    rules: CSSRuleList,
+    owner: CSSStyleSheet | CSSGroupingRule,
+    nested = false,
+  ): void => {
+    for (let index = rules.length - 1; index >= 0; index -= 1) {
+      const rule = rules[index]!;
+
+      if (rule.type === 1) {
+        const styleRule = rule as CSSStyleRule & { cssRules?: CSSRuleList };
+        try {
+          styleRule.selectorText = renameSelector(styleRule.selectorText);
+        } catch {
+          /* keep the original selector if the renamed one is invalid */
+        }
+
+        if (styleRule.cssRules && styleRule.cssRules.length > 0) {
+          pruneRules(styleRule.cssRules, styleRule as unknown as CSSGroupingRule, true);
+        } else if (!nested) {
+          const branches = splitSelectorList(styleRule.selectorText);
+          const matching = branches.filter((branch) => selectorMatches(branch));
+          if (matching.length === 0) {
+            owner.deleteRule(index);
+          } else if (matching.length !== branches.length) {
+            try {
+              styleRule.selectorText = matching.join(', ');
+            } catch {
+              /* keep the full selector if the filtered one is invalid */
+            }
+          }
+        }
+        continue;
+      }
+
+      // Keep fonts, keyframes, imports and other leaf at-rules.
+      if (rule.type === 3 || rule.type === 5 || rule.type === 7) continue;
+
+      const group = rule as CSSGroupingRule;
+      if (!group.cssRules) continue;
+      pruneRules(group.cssRules, group, nested);
+      if (!nested && group.cssRules.length === 0) owner.deleteRule(index);
+    }
+  };
+
+  return sheets.map((text) => {
+    if (!text.trim()) return text;
+    const clean = text
+      .replace(/@import[^;]+;/gi, '')
+      .replace(/@charset[^;]+;/gi, '');
+    try {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(clean);
+      pruneRules(sheet.cssRules, sheet);
+      return Array.from(sheet.cssRules)
+        .map((rule) => rewriteIdUrls(rule.cssText))
+        .join('\n');
+    } catch {
+      // If the sheet cannot be parsed, leave it untouched rather than risk a
+      // mismatch between the renamed DOM and the original selectors.
+      return text;
+    }
+  });
 }
 
 type ClonedBody = Awaited<ReturnType<typeof cloneDocument>>;

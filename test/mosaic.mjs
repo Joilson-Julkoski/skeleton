@@ -104,11 +104,14 @@ const check = (condition, message) => {
   if (!condition) failures.push(message);
 };
 
+// Keep the fixture's own names here: this test is about image sampling, while
+// test/anonymize.mjs covers the generic names and CSS pruning.
 const result = await clonePage({
   url: FIXTURE,
   viewport: { width: 1440, height: 900 },
   seed: 42,
   title: 'Mosaic fixture',
+  anonymize: false,
   timeoutMs: 60_000,
 });
 
@@ -209,6 +212,7 @@ const solid = await clonePage({
   seed: 42,
   title: 'Mosaic fixture',
   images: 'solid',
+  anonymize: false,
   timeoutMs: 60_000,
 });
 const solidTags = solid.html.match(/<img\b[^>]*>/gi) ?? [];

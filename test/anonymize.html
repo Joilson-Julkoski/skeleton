@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Northwind Coffee - Anonymize fixture</title>
+<style>
+  :root { --brand-ink: #445566; }
+  body.theme-body {
+    margin: 0;
+    padding: 20px;
+    font-family: sans-serif;
+  }
+  .page-header {
+    padding: 10px;
+    border-bottom: 1px solid #123;
+  }
+  .brand-logo {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: #aabbcc;
+  }
+  .nav-link { color: var(--brand-ink); }
+  .nav-link.is-active { font-weight: 700; }
+  .ghost-card::before { content: "ghost"; }
+  .kept-alias, .dead-alias { border-top: 3px solid #010203; }
+  .kept-never:not(.missing-thing) { outline: 2px dotted #040506; }
+  .unused-widget { color: red; }
+  #unused-panel { color: red; }
+  @media (min-width: 1px) {
+    .page-header { padding: 12px; }
+    .never-matches { color: red; }
+  }
+  @keyframes pulse {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+</style>
+</head>
+<body class="theme-body">
+  <header class="page-header">
+    <div class="brand-logo"></div>
+    <nav>
+      <a class="nav-link is-active" href="https://brand.example/">Home</a>
+      <a class="nav-link" href="#">Other</a>
+    </nav>
+  </header>
+  <main class="kept-alias">
+    <div id="hero-panel" class="ghost-card kept-never">
+      <label for="email-field">Email</label>
+      <input id="email-field" type="email">
+    </div>
+  </main>
+</body>
+</html>

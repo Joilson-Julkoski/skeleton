@@ -16,6 +16,8 @@ Options:
       --title <text>      Output page title (default: "Placeholder clone")
       --images <mode>     mosaic (16-cell pixel grid) or solid (dominant-colour
                           block) (default: mosaic)
+      --keep-names        Keep original class names/ids and all CSS
+                          (debugging; disables anonymization)
   -h, --help              Show this help
 
 Examples:
@@ -32,6 +34,7 @@ async function main(): Promise<void> {
       seed: { type: 'string', default: '42' },
       title: { type: 'string', default: 'Placeholder clone' },
       images: { type: 'string', default: 'mosaic' },
+      'keep-names': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
@@ -68,6 +71,7 @@ async function main(): Promise<void> {
     seed,
     title: String(values.title),
     images,
+    anonymize: !values['keep-names'],
   });
 
   const outPath = resolve(String(values.out));

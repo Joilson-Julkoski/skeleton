@@ -9,8 +9,11 @@ original (or a solid `placehold.co` block when the image cannot be downloaded).
 Layout, typography, color and spacing survive exactly as the browser rendered
 them; the imagery is deliberately coarse.
 
-It is a **layout copy, not an anonymizer**: original class names, ids and CSS
-survive. See [Fidelity vs. anonymization](#fidelity-vs-anonymization).
+It is a **layout copy with light anonymization**: class names and ids are
+renamed to generic `c1`/`i1` names, CSS selectors are rewritten to match, and
+rules that no longer match the clone are dropped. CSS values, comments, custom
+property names and webfont URLs still come from the original. See
+[Fidelity vs. anonymization](#fidelity-vs-anonymization).
 
 ## Quick start (Docker)
 
@@ -48,6 +51,8 @@ skeleton <url> [options]
       --title <text>      Output page title (default: "Placeholder clone")
       --images <mode>     mosaic (16-cell pixel grid) or solid (dominant-colour
                           block) (default: mosaic)
+      --keep-names        Keep original class names/ids and all CSS
+                          (debugging; disables anonymization)
   -h, --help              Show help
 ```
 
@@ -78,7 +83,7 @@ solid placeholder.
 ## How it works
 
 ```
-load  ->  settle  ->  inline  ->  sample  ->  clone  ->  emit
+load  ->  settle  ->  inline  ->  sample  ->  clone  ->  anonymize  ->  emit
 ```
 
 1. **load** — opens the URL in Chromium at the requested viewport with a normal
@@ -101,9 +106,13 @@ load  ->  settle  ->  inline  ->  sample  ->  clone  ->  emit
    mosaic PNG (or a solid `placehold.co` fallback), and swaps
    video/iframe/canvas/svg elements for placeholder images of the same rendered
    size.
-6. **emit** — writes one self-contained HTML file: inlined CSS, the cloned body,
-   and the original `<html>`/`<body>` classes and inline styles so the page's own
-   selectors still match.
+6. **anonymize** — assigns generic `c1`/`c2`/`i1`/`i2` names to the classes and
+   ids that survive, rewrites selectors and id references to match, and removes
+   CSS rules (including individual branches of a selector list) that no longer
+   match the cloned DOM.
+7. **emit** — writes one self-contained HTML file: the pruned CSS, the cloned
+   body, and the renamed `<html>`/`<body>` classes and inline styles so the
+   rewritten selectors still match.
 
 ## What is replaced
 
@@ -112,22 +121,28 @@ load  ->  settle  ->  inline  ->  sample  ->  clone  ->  emit
 - every `src`, `srcset`, `poster` and image `url()` (backgrounds, masks,
   borders, data URIs), replaced by the sampled mosaic PNG, or by
   `https://placehold.co/<width>x<height>` when the original cannot be downloaded
+- class names and ids, replaced by generic names and rewritten everywhere
+  (selectors, `for`/`headers`/ARIA references, inline `url(#id)`)
+- CSS rules that cannot match the cloned DOM, including unused branches of
+  selector lists
 - `aria-*`, `data-*` and event handlers (attributes referenced by CSS
   selectors are kept so scoped styles still match)
 - scripts, `meta`, `link`, `base`, `noscript`, `template`
 
 ## What is kept
 
-- DOM structure, class names, ids
-- the page's own CSS, inlined (this is most of the output size)
-- `<html>` and `<body>` classes and inline styles
+- DOM structure and the pruned, inlined stylesheet
+- `<html>` and `<body>` classes and inline styles (renamed)
+- `@font-face`, `@keyframes`, `@supports`, `@media` and other live at-rules
 - webfonts, still pointing at their original URLs
 - gradients, colors, spacing, borders, radii, shadows, animations
 
 ## Known limitations
 
-- **Not anonymized.** Class names, ids and the full original stylesheet are in
-  the output; anything brand-specific that lives in CSS or markup survives.
+- **Only lightly anonymized.** Class names and ids are generic, but CSS values,
+  comments, custom-property names, keyframes/counter names, webfont URLs and
+  some `data-*` values still come from the original page. Anything brand-specific
+  that lives there survives.
 - **Needs network** for webfonts, and for `placehold.co` when an image falls
   back to a solid block.
 - **Media is generic.** Mosaics keep `<img>` elements, CSS image `url()`s and
@@ -137,8 +152,8 @@ load  ->  settle  ->  inline  ->  sample  ->  clone  ->  emit
 - **Colour sampling is best effort.** Images that cannot be fetched, decoded or
   exceed the sampling budget fall back to a solid `d8d8d8` placeholder. Only the
   first 1000 unique image URLs are sampled.
-- **Size.** The whole stylesheet is inlined: 34 KB for Hacker News, 576 KB for
-  Wikipedia, 3.9 MB for GitHub.
+- **Size.** The pruned stylesheet is inlined; sizes still range from tens of
+  kilobytes for Hacker News to a few megabytes for GitHub.
 - **Frozen in time.** JS-driven content is captured once. Carousels and rotating
   heroes make reruns differ, and forms/counters stop working.
 - **Shadow DOM is not cloned**; custom elements keep only their light DOM.
@@ -156,7 +171,7 @@ The trade is:
 | approach | fidelity | size | anonymized |
 |---|---|---|---|
 | measured flow rebuild (old) | 50–80% | 25–150 KB | yes |
-| copy DOM + CSS + mosaics (current) | structure exact, media replaced | 34 KB–3.9 MB | no |
+| copy DOM + CSS + mosaics (current) | structure exact, media replaced | tens of KB–few MB | partial |
 
 If anonymization is the requirement, the middle ground is to emit *computed*
 styles per element instead of the original stylesheet — same fidelity, no
