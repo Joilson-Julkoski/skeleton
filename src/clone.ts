@@ -732,11 +732,16 @@ function cloneDocument({
     tag: string,
     width: number,
     height: number,
-    detected?: string,
+    asset?: ImageAsset,
   ): HTMLImageElement => {
     const holder = document.createElement('img');
     holder.setAttribute('data-placeholder', tag.toLowerCase());
-    holder.setAttribute('src', placeholderUrl(width, height, detected));
+    if (asset?.mosaic) {
+      holder.setAttribute('src', asset.mosaic.uri);
+      holder.setAttribute('data-mosaic', `${asset.mosaic.width}x${asset.mosaic.height}`);
+    } else {
+      holder.setAttribute('src', placeholderUrl(width, height, asset?.colour));
+    }
     holder.setAttribute('alt', '');
     holder.setAttribute('width', String(Math.max(1, Math.round(width))));
     holder.setAttribute('height', String(Math.max(1, Math.round(height))));
@@ -803,7 +808,7 @@ function cloneDocument({
         imageSource = source;
         placeholderColour = source ? colourFor(source) : undefined;
       } else {
-        // Video, iframe, canvas, svg and friends cannot load a placehold.co
+        // Video, iframe, canvas, svg and friends cannot load a replacement
         // image as-is, so swap them for an <img> of the same rendered size.
         const source =
           tag === 'VIDEO'
@@ -813,8 +818,9 @@ function cloneDocument({
               : tag === 'EMBED'
                 ? original.getAttribute('src')
                 : null;
-        placeholderColour = source ? colourFor(source) : undefined;
-        const holder = placeholderNode(tag, width, height, placeholderColour);
+        const asset = source ? assetFor(source) : undefined;
+        placeholderColour = asset?.colour;
+        const holder = placeholderNode(tag, width, height, asset);
         const declarations = [
           'display:inline-block',
           `width:${width.toFixed(1)}px`,

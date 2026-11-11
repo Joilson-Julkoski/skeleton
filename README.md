@@ -130,10 +130,10 @@ load  ->  settle  ->  inline  ->  sample  ->  clone  ->  emit
   the output; anything brand-specific that lives in CSS or markup survives.
 - **Needs network** for webfonts, and for `placehold.co` when an image falls
   back to a solid block.
-- **Media is generic.** Mosaics keep `<img>` elements and CSS image `url()`s as
-  16-cell colour grids; `<video>`, `<iframe>`, canvas and inline SVG still become
-  plain placeholder images. Image-led layouts keep their boxes but lose their
-  detail by design.
+- **Media is generic.** Mosaics keep `<img>` elements, CSS image `url()`s and
+  video posters/object/embed sources as 16-cell colour grids; `<iframe>`, canvas
+  and inline SVG have no downloadable source and become plain placeholder images.
+  Image-led layouts keep their boxes but lose their detail by design.
 - **Colour sampling is best effort.** Images that cannot be fetched, decoded or
   exceed the sampling budget fall back to a solid `d8d8d8` placeholder. Only the
   first 1000 unique image URLs are sampled.

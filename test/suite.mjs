@@ -14,6 +14,36 @@ const PAGES = [
   { slug: 'apple', name: 'Apple', tier: 3, url: 'https://www.apple.com/' },
 ];
 
+// Wikipedia and other sites occasionally serve a rate-limit/error page to
+// datacenter IPs. Those captures are only a few dozen elements; retry them.
+const MIN_ELEMENTS = 100;
+const MAX_ATTEMPTS = 3;
+
+async function capture(entry) {
+  let clone;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    if (attempt > 1) {
+      process.stdout.write(`[${entry.slug}] retry ${attempt}/${MAX_ATTEMPTS}\n`);
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+    }
+    process.stdout.write(`[${entry.slug}] ${IMAGE_MODE} capturing ${entry.url}\n`);
+    clone = await clonePage({
+      url: entry.url,
+      viewport: VIEWPORT,
+      seed: SEED,
+      title: 'Placeholder clone',
+      images: IMAGE_MODE,
+      timeoutMs: 90_000,
+    });
+    if (clone.elementCount >= MIN_ELEMENTS) break;
+    process.stdout.write(
+      `[${entry.slug}] suspiciously small (${clone.elementCount} elements, ` +
+      `title "${clone.pageTitle}")\n`,
+    );
+  }
+  return clone;
+}
+
 async function main() {
   await mkdir(OUT, { recursive: true });
 
@@ -24,15 +54,7 @@ async function main() {
     const started = Date.now();
 
     try {
-      process.stdout.write(`[${entry.slug}] capturing ${entry.url}\n`);
-      const clone = await clonePage({
-        url: entry.url,
-        viewport: VIEWPORT,
-        seed: SEED,
-        title: 'Placeholder clone',
-        images: IMAGE_MODE,
-        timeoutMs: 90_000,
-      });
+      const clone = await capture(entry);
 
       await writeFile(`${OUT}/${entry.slug}.html`, clone.html, 'utf8');
       captured += 1;
